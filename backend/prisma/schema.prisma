@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  name      String
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+}
+
+model Income {
+  id           Int      @id @default(autoincrement())
+  donorName    String
+  donorPhone   String?
+  donorAddress String?
+  category     String
+  amount       Float
+  paymentMode  String
+  description  String?
+  customFields String?  // JSON stringified array of {name, value}
+  proofImage   String?  // Image path or base64
+  date         DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Expense {
+  id           Int      @id @default(autoincrement())
+  purpose      String
+  paidTo       String
+  category     String
+  amount       Float
+  paymentMode  String
+  description  String?
+  customFields String?  // JSON stringified array of {name, value}
+  proofImage   String?  // Image path or base64
+  date         DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Member {
+  id                   Int             @id @default(autoincrement())
+  name                 String
+  address              String?
+  phone                String
+  joiningDate          DateTime        @default(now())
+  monthlyDonation      Float           @default(100.0)
+  openingBalance       Float           @default(0.0) // Initial past due balance / arrears when registering member
+  status               String          @default("Active") // Active or Inactive
+  hasMadrasa           Boolean         @default(false)
+  madrasaChildrenCount Int             @default(0)
+  madrasaMonthlyFee    Float           @default(0.0)
+  notes                String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  payments             MemberPayment[]
+}
+
+model MemberPayment {
+  id                   Int      @id @default(autoincrement())
+  memberId             Int
+  member               Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  month                Int      // 1-12 (or 0 for dedicated opening balance payment)
+  year                 Int      // e.g. 2026
+  membershipAmount     Float    @default(0.0)
+  madrasaAmount        Float    @default(0.0)
+  openingBalanceAmount Float    @default(0.0) // Amount paid towards past opening balance
+  totalAmount          Float
+  paymentMode          String   @default("Cash in Hand")
+  paymentDate          DateTime @default(now())
+  receiptNo            String?
+  notes                String?
+  createdAt            DateTime @default(now())
+}
+
+model Staff {
+  id          Int            @id @default(autoincrement())
+  name        String
+  phone       String
+  salary      Float
+  category    String         // Imam, Muazzin, Cashier, Teacher (Madarsa), etc.
+  joiningDate DateTime       @default(now())
+  status      String         @default("Active") // Active, On Leave, Inactive
+  description String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  payments    StaffPayment[]
+}
+
+model StaffPayment {
+  id          Int      @id @default(autoincrement())
+  staffId     Int
+  staff       Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  month       Int      // 1-12
+  year        Int
+  amount      Float
+  paymentMode String   @default("Cash in Hand")
+  paymentDate DateTime @default(now())
+  receiptNo   String?
+  notes       String?
+  createdAt   DateTime @default(now())
+}
+
+model CustomCategory {
+  id        Int      @id @default(autoincrement())
+  type      String   // "INCOME" or "EXPENSE"
+  name      String
+  createdAt DateTime @default(now())
+
+  @@unique([type, name])
+}
+
+model Setting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}

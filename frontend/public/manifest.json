@@ -1,0 +1,17 @@
+{
+  "name": "جامعة النور - Jamia An-Noor",
+  "short_name": "جامعة النور",
+  "description": "جامعة النور (Jamia An-Noor) - Comprehensive Masjid Management System for Income, Expense, Member Subscriptions, and Staff Administration",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
