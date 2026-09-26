@@ -57,6 +57,15 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Static folder for uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+// Root route for cron jobs / uptime monitoring (prevents Render instance from sleeping)
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'online',
+    message: '🕌 جامعة النور (Jamia An-Noor) Masjid Management API is active and awake!',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Health Check
 app.get('/api/health', (req, res) => {
   res.json({

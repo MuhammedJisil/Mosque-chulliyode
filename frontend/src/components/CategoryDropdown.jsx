@@ -33,8 +33,11 @@ export default function CategoryDropdown({
   };
 
   const handleCreateCategory = async (e) => {
-    e.preventDefault();
-    if (!newCatName.trim()) return;
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!newCatName.trim() || loading) return;
 
     setLoading(true);
     setError('');
@@ -52,6 +55,8 @@ export default function CategoryDropdown({
         onChange(res.category.name);
         setNewCatName('');
         setShowAddModal(false);
+      } else {
+        setError(res.message || 'Failed to save category');
       }
     } catch (err) {
       setError(err.message || 'Failed to save custom category');
@@ -86,8 +91,16 @@ export default function CategoryDropdown({
 
       {/* Modal for adding custom category */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-slate-200 dark:border-slate-800">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in"
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-slate-200 dark:border-slate-800"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
               <h4 className="text-base font-semibold text-slate-800 dark:text-slate-100">
                 Add Custom Category
@@ -101,7 +114,7 @@ export default function CategoryDropdown({
               </button>
             </div>
 
-            <form onSubmit={handleCreateCategory} className="space-y-4">
+            <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
                   Category Name
@@ -111,6 +124,13 @@ export default function CategoryDropdown({
                   placeholder="e.g. Solar Project Fund"
                   value={newCatName}
                   onChange={(e) => setNewCatName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleCreateCategory(e);
+                    }
+                  }}
                   autoFocus
                   required
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -127,14 +147,15 @@ export default function CategoryDropdown({
                   Cancel
                 </button>
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={handleCreateCategory}
                   disabled={loading || !newCatName.trim()}
-                  className="px-4 py-2 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow disabled:opacity-50"
+                  className="px-4 py-2 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm disabled:opacity-50 flex items-center gap-1.5"
                 >
                   {loading ? 'Saving...' : 'Add Category'}
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

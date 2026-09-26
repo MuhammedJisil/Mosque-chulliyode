@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { ToastProvider } from './context/ToastContext';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
@@ -71,7 +72,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <MainApp />
+        <ToastProvider>
+          <MainApp />
+        </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
   );

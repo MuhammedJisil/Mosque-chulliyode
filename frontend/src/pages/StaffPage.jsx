@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../utils/api';
 import { STAFF_CATEGORIES, PAYMENT_MODES, MONTH_NAMES } from '../utils/categoriesData';
+import { useToast } from '../context/ToastContext';
 import { exportToPdf } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
 import {
@@ -23,6 +24,7 @@ import {
 } from 'lucide-react';
 
 export default function StaffPage() {
+  const { toast } = useToast();
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -112,9 +114,10 @@ export default function StaffPage() {
     if (!window.confirm('Are you sure you want to delete this staff record?')) return;
     try {
       await api.del(`/api/staff/${id}`);
+      toast.success('Staff record deleted successfully');
       fetchStaff();
     } catch (err) {
-      alert(err.message || 'Failed to delete staff member');
+      toast.error(err.message || 'Failed to delete staff member');
     }
   };
 
@@ -124,13 +127,15 @@ export default function StaffPage() {
     try {
       if (editingStaff) {
         await api.put(`/api/staff/${editingStaff.id}`, formData);
+        toast.success('Staff record updated successfully');
       } else {
         await api.post('/api/staff', formData);
+        toast.success('Staff member added successfully');
       }
       setShowAddModal(false);
       fetchStaff();
     } catch (err) {
-      alert(err.message || 'Failed to save staff record');
+      toast.error(err.message || 'Failed to save staff record');
     } finally {
       setSubmitting(false);
     }
@@ -139,11 +144,11 @@ export default function StaffPage() {
   // Open Salary Payout modal (Auto-selects earliest pending salary month)
   const handleOpenPayout = (s) => {
     if (s.status !== 'Active') {
-      alert(`${s.name} is currently ${s.status}. Salary can only be disbursed to Active personnel.`);
+      toast.error(`${s.name} is currently ${s.status}. Salary can only be disbursed to Active personnel.`);
       return;
     }
     if (s.pendingMonthsCount === 0) {
-      alert(`✅ ${s.name} is already paid up to date! All monthly salaries have been disbursed.`);
+      toast.success(`${s.name} is already paid up to date! All monthly salaries have been disbursed.`);
       return;
     }
 
@@ -177,10 +182,10 @@ export default function StaffPage() {
     try {
       await api.post(`/api/staff/${payoutStaff.id}/payout`, payoutForm);
       setShowPayoutModal(false);
-      alert(`Salary payout of ₹${payoutForm.amount} for ${payoutStaff.name} recorded in Expenses & Staff History!`);
+      toast.success(`Salary payout of ₹${payoutForm.amount} for ${payoutStaff.name} recorded successfully!`);
       fetchStaff();
     } catch (err) {
-      alert(err.message || 'Failed to process salary payout');
+      toast.error(err.message || 'Failed to process salary payout');
     }
   };
 
@@ -215,7 +220,7 @@ export default function StaffPage() {
     const totalPending = staffList.reduce((acc, s) => acc + (s.totalPendingSalary || 0), 0);
 
     exportToPdf({
-      title: 'جامعة النور - Staff & Payroll Roster',
+      title: 'JAMIA AN-NOOR - Staff & Payroll Roster',
       subtitle: `Total Staff: ${staffList.length}`,
       dateRange: 'Active Payroll',
       columns,
@@ -643,7 +648,7 @@ export default function StaffPage() {
 
       {/* Salary Payout Modal (Connected to Expense) */}
       {showPayoutModal && payoutStaff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <div>
@@ -799,7 +804,7 @@ export default function StaffPage() {
 
       {/* Salary History Modal */}
       {showHistoryModal && historyStaff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full p-6 border border-slate-200 dark:border-slate-800 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <div>
@@ -849,7 +854,7 @@ export default function StaffPage() {
 
       {/* Staff Details Modal (for Mobile Users) */}
       {showDetailModal && detailStaff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-sm w-full p-6 border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
@@ -921,8 +926,8 @@ export default function StaffPage() {
 
       {/* Add / Edit Staff Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-8 p-6 border border-slate-200 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-auto sm:my-8 p-5 sm:p-6 border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 {editingStaff ? 'Edit Staff Member' : 'Register New Staff'}

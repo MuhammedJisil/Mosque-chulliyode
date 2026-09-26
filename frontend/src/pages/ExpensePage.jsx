@@ -9,19 +9,23 @@ import { exportToPdf } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
 import Pagination from '../components/Pagination';
 import { DEFAULT_EXPENSE_CATEGORIES, PAYMENT_MODES, MONTH_NAMES } from '../utils/categoriesData';
+import { useToast } from '../context/ToastContext';
 import {
   Plus,
   Search,
   Download,
   Trash2,
   Edit2,
+  Eye,
   Camera,
+  FileText,
   X,
   Check,
   Image as ImageIcon
 } from 'lucide-react';
 
 export default function ExpensePage() {
+  const { toast } = useToast();
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -40,6 +44,8 @@ export default function ExpensePage() {
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewingItem, setViewingItem] = useState(null);
   const [showProofModal, setShowProofModal] = useState(false);
   const [proofModalUrl, setProofModalUrl] = useState('');
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -123,13 +129,19 @@ export default function ExpensePage() {
     setShowAddModal(true);
   };
 
+  const handleOpenView = (item) => {
+    setViewingItem(item);
+    setShowViewModal(true);
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this expense record?')) return;
     try {
       await api.del(`/api/expense/${id}`);
+      toast.success('Expense record deleted successfully');
       fetchExpenses();
     } catch (err) {
-      alert(err.message || 'Failed to delete expense record');
+      toast.error(err.message || 'Failed to delete expense record');
     }
   };
 
@@ -139,13 +151,15 @@ export default function ExpensePage() {
     try {
       if (editingItem) {
         await api.put(`/api/expense/${editingItem.id}`, formData);
+        toast.success('Expense record updated successfully');
       } else {
         await api.post('/api/expense', formData);
+        toast.success('Expense recorded successfully');
       }
       setShowAddModal(false);
       fetchExpenses();
     } catch (err) {
-      alert(err.message || 'Failed to save expense record');
+      toast.error(err.message || 'Failed to save expense record');
     } finally {
       setSubmitting(false);
     }
@@ -172,7 +186,7 @@ export default function ExpensePage() {
     const total = dataToExport.reduce((acc, c) => acc + c.amount, 0);
 
     exportToPdf({
-      title: 'جامعة النور - Expense Statement',
+      title: 'JAMIA AN-NOOR - Expense Statement',
       subtitle: `Total Records: ${dataToExport.length}`,
       dateRange: periodLabel,
       columns,
@@ -382,6 +396,14 @@ export default function ExpensePage() {
                       </button>
                     )}
                     <button
+                      type="button"
+                      onClick={() => handleOpenView(item)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                      title="View Details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => handleOpenEdit(item)}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                       title="Edit Expense"
@@ -503,6 +525,14 @@ export default function ExpensePage() {
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-1">
                         <button
+                          type="button"
+                          onClick={() => handleOpenView(item)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                          title="View Details"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => handleOpenEdit(item)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
                           title="Edit Expense"
@@ -533,10 +563,139 @@ export default function ExpensePage() {
         />
       </div>
 
+      {/* View Expense Details Modal */}
+      {showViewModal && viewingItem && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-lg w-full my-auto sm:my-8 p-5 sm:p-6 border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-rose-600" />
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Expense Entry #{viewingItem.id}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowViewModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-4 text-xs">
+              {/* Amount and Category Header */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-rose-50 to-orange-50 dark:from-rose-950/40 dark:to-slate-900 border border-rose-100 dark:border-rose-900/50 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-rose-800 dark:text-rose-400 tracking-wider">
+                    Total Amount Spent
+                  </span>
+                  <div className="text-2xl font-extrabold text-rose-700 dark:text-rose-300 mt-0.5">
+                    -₹{Number(viewingItem.amount).toLocaleString('en-IN')}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200 border border-rose-300 dark:border-rose-800">
+                    {viewingItem.category}
+                  </span>
+                  <div className="text-[11px] text-slate-500 mt-1">
+                    {viewingItem.paymentMode}
+                  </div>
+                </div>
+              </div>
+
+              {/* Expense Details Card */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 uppercase font-semibold text-[10px]">Purpose / Title</span>
+                  <span className="font-bold text-sm text-slate-800 dark:text-slate-100">{viewingItem.purpose}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 uppercase font-semibold text-[10px]">Paid To</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">👤 {viewingItem.paidTo}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 uppercase font-semibold text-[10px]">Expense Date</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                    📅 {new Date(viewingItem.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Description */}
+              {viewingItem.description && (
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] uppercase font-semibold text-slate-400 block mb-1">Description / Remarks</span>
+                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{viewingItem.description}</p>
+                </div>
+              )}
+
+              {/* Custom Fields */}
+              {viewingItem.customFields && viewingItem.customFields.length > 0 && (
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] uppercase font-semibold text-slate-400 block mb-2">Additional Information</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {viewingItem.customFields.map((field, idx) => (
+                      <div key={idx} className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                        <span className="text-[10px] text-slate-400 block">{field.name}</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{field.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Proof Image */}
+              {viewingItem.proofImage && (
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] uppercase font-semibold text-slate-400 block mb-2">Receipt / Voucher Proof</span>
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={viewingItem.proofImage}
+                      alt="Proof"
+                      className="w-16 h-16 object-cover rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"
+                      onClick={() => { setProofModalUrl(viewingItem.proofImage); setShowProofModal(true); }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setProofModalUrl(viewingItem.proofImage); setShowProofModal(true); }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                      View Full Size
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowViewModal(false);
+                  handleOpenEdit(viewingItem);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                Edit Record
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowViewModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add / Edit Expense Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full my-8 p-6 border border-slate-200 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full my-auto sm:my-8 p-5 sm:p-6 border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 {editingItem ? 'Edit Expense Record' : 'Record New Expense'}

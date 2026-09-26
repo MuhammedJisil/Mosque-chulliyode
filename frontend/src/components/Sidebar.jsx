@@ -13,9 +13,9 @@ import {
 export default function Sidebar({ activeTab, onTabChange, isOpen, onClose }) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'income', label: 'Income Management', icon: ArrowDownLeft, badge: 'Cash Flow' },
+    { id: 'income', label: 'Income Management', icon: ArrowDownLeft },
     { id: 'expense', label: 'Expense Management', icon: ArrowUpRight },
-    { id: 'members', label: 'Members & Madrasa', icon: Users, badge: 'Dues' },
+    { id: 'members', label: 'Members & Madrasa', icon: Users },
     { id: 'staff', label: 'Staff & Payroll', icon: UserCheck },
   ];
 

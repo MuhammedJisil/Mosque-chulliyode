@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
 const prisma = require('../config/db');
 const authMiddleware = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { isConfigured, uploadToCloudinary } = require('../utils/cloudinary');
 
 // Get all Expense records with filters
 router.get('/', authMiddleware, async (req, res) => {
@@ -121,6 +123,18 @@ router.post('/', authMiddleware, async (req, res) => {
       });
     }
 
+    let finalProofImage = proofImage || null;
+    if (proofImage && typeof proofImage === 'string' && proofImage.startsWith('data:image/') && isConfigured()) {
+      try {
+        const uploaded = await uploadToCloudinary(proofImage, 'mosque_expense_proofs');
+        if (uploaded?.url) {
+          finalProofImage = uploaded.url;
+        }
+      } catch (uploadErr) {
+        console.warn('Cloudinary upload warning (fallback to base64):', uploadErr.message);
+      }
+    }
+
     const newExpense = await prisma.expense.create({
       data: {
         purpose,
@@ -130,7 +144,7 @@ router.post('/', authMiddleware, async (req, res) => {
         paymentMode,
         description: description || '',
         customFields: customFields ? JSON.stringify(customFields) : null,
-        proofImage: proofImage || null,
+        proofImage: finalProofImage,
         date: date ? new Date(date) : new Date(),
       }
     });
@@ -164,6 +178,18 @@ router.put('/:id', authMiddleware, async (req, res) => {
       date
     } = req.body;
 
+    let finalProofImage = proofImage;
+    if (proofImage && typeof proofImage === 'string' && proofImage.startsWith('data:image/') && isConfigured()) {
+      try {
+        const uploaded = await uploadToCloudinary(proofImage, 'mosque_expense_proofs');
+        if (uploaded?.url) {
+          finalProofImage = uploaded.url;
+        }
+      } catch (uploadErr) {
+        console.warn('Cloudinary upload warning (fallback to base64):', uploadErr.message);
+      }
+    }
+
     const updated = await prisma.expense.update({
       where: { id: parseInt(req.params.id) },
       data: {
@@ -174,7 +200,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
         paymentMode,
         description,
         customFields: customFields !== undefined ? JSON.stringify(customFields) : undefined,
-        ...(proofImage !== undefined ? { proofImage } : {}),
+        ...(finalProofImage !== undefined ? { proofImage: finalProofImage } : {}),
         ...(date ? { date: new Date(date) } : {}),
       }
     });
@@ -205,11 +231,25 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// Upload proof file (multipart)
-router.post('/upload-proof', authMiddleware, upload.single('file'), (req, res) => {
+// Upload proof file (multipart or Cloudinary)
+router.post('/upload-proof', authMiddleware, upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No file uploaded' });
   }
+
+  if (isConfigured()) {
+    try {
+      const result = await uploadToCloudinary(req.file.path, 'mosque_expense_proofs');
+      // Clean up local temp file after upload
+      fs.unlink(req.file.path, () => {});
+      if (result?.url) {
+        return res.json({ success: true, fileUrl: result.url });
+      }
+    } catch (uploadErr) {
+      console.warn('Cloudinary upload error, using local fallback:', uploadErr.message);
+    }
+  }
+
   const fileUrl = `/uploads/${req.file.filename}`;
   res.json({ success: true, fileUrl });
 });

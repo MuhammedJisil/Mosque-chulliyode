@@ -9,12 +9,13 @@ const authMiddleware = require('../middleware/auth');
 // Strict rate limiter for login to prevent brute force attacks
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes window
-  max: 10, // Max 10 attempts per IP per 15 minutes
+  max: 10, // Max 10 failed attempts per IP per 15 minutes
+  skipSuccessfulRequests: true, // Do not penalize successful logins
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     success: false,
-    message: 'Too many login attempts. Please wait 15 minutes before trying again.'
+    message: 'Too many failed login attempts from this IP. Please wait 15 minutes before trying again.'
   }
 });
 
