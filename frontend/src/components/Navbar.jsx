@@ -19,16 +19,20 @@ export default function Navbar({ onToggleSidebar }) {
           </button>
 
           <div className="flex items-center gap-3">
-            <img src="/app-icon.svg" alt="جامعة النور" className="w-10 h-10 rounded-xl shadow-glow object-cover" />
+            <img
+              src="/app-icon.svg"
+              alt="MASJID-AL-NOOR"
+              className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl shadow-glow object-cover"
+            />
             <div>
-              <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-tight flex items-center gap-2" dir="rtl">
-                جامعة النور
+              <h1 className="text-[13px] sm:text-base md:text-lg font-bold text-slate-900 dark:text-white leading-tight flex items-center gap-2 md:gap-4">
+                MASJID-AL-NOOR
                 <span className="hidden sm:inline-block text-[10px] uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800" dir="ltr">
                   Admin ERP
                 </span>
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
-                Income, Expense & Member Management
+                Sirajul Huda Sangam, Chulliyode
               </p>
             </div>
           </div>
@@ -48,7 +52,7 @@ export default function Navbar({ onToggleSidebar }) {
 
           {/* Admin Profile */}
           <div className="flex items-center gap-2.5 pl-2 border-l border-slate-200 dark:border-slate-800">
-            <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-700 flex items-center justify-center text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+            <div className="hidden md:flex w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-700 items-center justify-center text-emerald-800 dark:text-emerald-300 font-bold text-xs">
               <Shield className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div className="hidden md:block text-left">

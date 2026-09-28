@@ -31,16 +31,15 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, onClose }) {
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed md:sticky top-0 md:top-16 z-40 h-full md:h-[calc(100vh-4rem)] w-64 glass-panel border-r border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between p-4 transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-        }`}
+        className={`fixed md:sticky top-0 md:top-16 z-40 h-full md:h-[calc(100vh-4rem)] w-64 glass-panel border-r border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between p-4 transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          }`}
       >
         <div className="space-y-6">
           {/* Mobile Header */}
           <div className="flex items-center justify-between md:hidden pb-3 border-b border-slate-200 dark:border-slate-800">
             <div className="flex items-center gap-2">
-              <img src="/app-icon.svg" alt="جامعة النور" className="w-7 h-7 rounded-lg" />
-              <span className="font-bold text-slate-800 dark:text-slate-100" dir="rtl">جامعة النور</span>
+              <img src="/app-icon.svg" alt="MASJID-AL-NOOR" className="w-7 h-7 rounded-lg" />
+              <span className="font-bold text-slate-800 dark:text-slate-100" >MASJID-AL-NOOR</span>
             </div>
             <button
               onClick={onClose}
@@ -62,22 +61,20 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, onClose }) {
                     onTabChange(item.id);
                     if (onClose) onClose();
                   }}
-                  className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-medium transition-all ${
-                    isActive
-                      ? 'bg-gradient-to-r from-emerald-600 to-emerald-700 text-white shadow-md shadow-emerald-600/20 font-semibold'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-emerald-600 dark:hover:text-emerald-400'
-                  }`}
+                  className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-medium transition-all ${isActive
+                    ? 'bg-gradient-to-r from-emerald-600 to-emerald-700 text-white shadow-md shadow-emerald-600/20 font-semibold'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-emerald-600 dark:hover:text-emerald-400'
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-emerald-500'}`} />
                     <span>{item.label}</span>
                   </div>
                   {item.badge && (
-                    <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-md ${
-                      isActive
-                        ? 'bg-emerald-800 text-emerald-100'
-                        : 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                    }`}>
+                    <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-md ${isActive
+                      ? 'bg-emerald-800 text-emerald-100'
+                      : 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}>
                       {item.badge}
                     </span>
                   )}

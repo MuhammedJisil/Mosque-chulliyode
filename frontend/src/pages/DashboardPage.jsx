@@ -50,7 +50,7 @@ export default function DashboardPage({ onNavigate }) {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-500 font-medium">Loading جامعة النور Dashboard...</p>
+          <p className="text-sm text-slate-500 font-medium">MASJID-AL-NOOR</p>
         </div>
       </div>
     );
@@ -86,8 +86,8 @@ export default function DashboardPage({ onNavigate }) {
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               Masjid Finance &amp; Membership Hub
             </div>
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight" dir="rtl">
-              جامعة النور
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight">
+              MASJID-AL-NOOR
             </h2>
             <p className="text-emerald-100/80 text-xs sm:text-sm max-w-xl">
               Overview for {currentMonthLabel} {stats.currentYear}. Track all collections, staff expenses, and member dues.
