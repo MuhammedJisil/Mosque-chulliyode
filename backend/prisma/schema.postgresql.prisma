@@ -17,41 +17,47 @@ model Admin {
 }
 
 model Income {
-  id           Int      @id @default(autoincrement())
-  donorName    String
-  donorPhone   String?
-  donorAddress String?
-  category     String
-  amount       Float
-  paymentMode  String
-  description  String?
-  customFields String?  // JSON stringified array of {name, value}
-  proofImage   String?  // Image path or base64
-  date         DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  donorName       String
+  donorPhone      String?
+  donorAddress    String?
+  category        String
+  amount          Float
+  paymentMode     String
+  description     String?
+  customFields    String?  // JSON stringified array of {name, value}
+  proofImage      String?  // Image path or base64
+  receiptNo       String?  // Shared receipt number or voucher number
+  memberPaymentId Int?     // Link to MemberPayment if synced
+  memberId        Int?     // Link to Member if synced
+  date            DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model Expense {
-  id           Int      @id @default(autoincrement())
-  purpose      String
-  paidTo       String
-  category     String
-  amount       Float
-  paymentMode  String
-  description  String?
-  customFields String?  // JSON stringified array of {name, value}
-  proofImage   String?  // Image path or base64
-  date         DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  purpose        String
+  paidTo         String
+  category       String
+  amount         Float
+  paymentMode    String
+  description    String?
+  customFields   String?  // JSON stringified array of {name, value}
+  proofImage     String?  // Image path or base64
+  receiptNo      String?  // Receipt or voucher number
+  staffPaymentId Int?     // Link to StaffPayment if salary payout
+  staffId        Int?     // Link to Staff if salary payout
+  date           DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Member {
   id                   Int             @id @default(autoincrement())
   name                 String
   address              String?
-  phone                String
+  phone                String?         @default("")
   joiningDate          DateTime        @default(now())
   monthlyDonation      Float           @default(100.0)
   openingBalance       Float           @default(0.0) // Initial past due balance / arrears when registering member
@@ -85,7 +91,7 @@ model MemberPayment {
 model Staff {
   id          Int            @id @default(autoincrement())
   name        String
-  phone       String
+  phone       String?        @default("")
   salary      Float
   category    String         // Imam, Muazzin, Cashier, Teacher (Madarsa), etc.
   joiningDate DateTime       @default(now())
