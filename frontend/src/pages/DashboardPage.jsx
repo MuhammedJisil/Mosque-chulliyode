@@ -15,10 +15,16 @@ import {
   BarChart3,
   History,
   X,
+  Download,
+  FileText,
+  Calendar,
 } from 'lucide-react';
 import { MONTH_NAMES } from '../utils/categoriesData';
+import { exportToPdf, fmtPdfAmount } from '../utils/exportPdf';
+import { useToast } from '../context/ToastContext';
 
 export default function DashboardPage({ onNavigate }) {
+  const { toast } = useToast();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -26,6 +32,90 @@ export default function DashboardPage({ onNavigate }) {
   // Modals for mobile friendliness
   const [showTrendModal, setShowTrendModal] = useState(false);
   const [showRecentModal, setShowRecentModal] = useState(false);
+
+  // Financial Statement / Ledger PDF State
+  const [showStatementModal, setShowStatementModal] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const curMonth = new Date().getMonth() + 1;
+  const curYear = new Date().getFullYear();
+  const firstDayMonthStr = `${curYear}-${String(curMonth).padStart(2, '0')}-01`;
+
+  const [statementFilter, setStatementFilter] = useState({
+    type: 'all', // 'all', 'tillDate', 'month', 'year', 'range'
+    tillDate: todayStr,
+    month: curMonth,
+    year: curYear,
+    startDate: firstDayMonthStr,
+    endDate: todayStr,
+  });
+
+  const handleDownloadStatement = async () => {
+    try {
+      setGeneratingPdf(true);
+      const params = {
+        type: statementFilter.type,
+      };
+
+      if (statementFilter.type === 'tillDate') {
+        params.tillDate = statementFilter.tillDate;
+      } else if (statementFilter.type === 'month') {
+        params.month = statementFilter.month;
+        params.year = statementFilter.year;
+      } else if (statementFilter.type === 'year') {
+        params.year = statementFilter.year;
+      } else if (statementFilter.type === 'range') {
+        params.startDate = statementFilter.startDate;
+        params.endDate = statementFilter.endDate;
+      }
+
+      const res = await api.get('/api/dashboard/statement', params);
+      if (!res.success) {
+        throw new Error(res.message || 'Failed to fetch statement records');
+      }
+
+      const { periodLabel, summary, ledger } = res;
+
+      if (!ledger || ledger.length === 0) {
+        toast.info(`No transactions found for ${periodLabel}. An empty statement will be generated.`);
+      }
+
+      const columns = ['Date', 'Particulars', 'Category', 'Mode', 'Income (Rs.)', 'Expense (Rs.)', 'Balance (Rs.)'];
+      const rows = ledger.map(entry => [
+        new Date(entry.date).toLocaleDateString('en-GB'),
+        entry.title || (entry.type === 'INCOME' ? 'General Income' : 'General Expense'),
+        entry.category || '-',
+        entry.paymentMode || 'Cash',
+        entry.type === 'INCOME' ? fmtPdfAmount(entry.incomeAmount) : '-',
+        entry.type === 'EXPENSE' ? fmtPdfAmount(entry.expenseAmount) : '-',
+        fmtPdfAmount(entry.balance)
+      ]);
+
+      const summaryRows = [
+        { label: 'Opening Balance (Prior to Period):', value: fmtPdfAmount(summary.openingBalance), bold: true },
+        { label: 'Total Income (This Period):', value: `+ ${fmtPdfAmount(summary.totalIncome)}`, bold: true, highlight: true },
+        { label: 'Total Expense (This Period):', value: `- ${fmtPdfAmount(summary.totalExpense)}`, bold: true },
+        { label: 'Net Closing Balance:', value: fmtPdfAmount(summary.closingBalance), bold: true, highlight: true },
+      ];
+
+      exportToPdf({
+        title: 'Financial Statement & Cashbook Ledger',
+        subtitle: `Period: ${periodLabel}`,
+        dateRange: periodLabel,
+        columns,
+        rows,
+        summaryRows,
+        fileName: `masjid_al_noor_ledger_${periodLabel.toLowerCase().replace(/[^a-z0-9]/g, '_')}.pdf`
+      });
+
+      toast.success('Financial Statement PDF downloaded successfully!');
+      setShowStatementModal(false);
+    } catch (err) {
+      toast.error(err.message || 'Failed to generate financial statement PDF');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
 
   const loadStats = async () => {
     try {
@@ -120,6 +210,14 @@ export default function DashboardPage({ onNavigate }) {
               <Users className="w-3.5 h-3.5" />
               <span>Members</span>
             </button>
+            <button
+              onClick={() => setShowStatementModal(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-900 text-xs font-bold rounded-xl shadow-md transition-transform active:scale-95"
+              title="Download Financial Statement / Ledger (PDF)"
+            >
+              <Download className="w-4 h-4 text-slate-900" />
+              <span>Statement PDF</span>
+            </button>
           </div>
         </div>
       </div>
@@ -188,20 +286,27 @@ export default function DashboardPage({ onNavigate }) {
       </div>
 
       {/* Mobile Friendly Modal Trigger Buttons */}
-      <div className="flex items-center gap-2 sm:hidden">
+      <div className="grid grid-cols-3 gap-2 sm:hidden">
+        <button
+          onClick={() => setShowStatementModal(true)}
+          className="py-3 px-2 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs"
+        >
+          <Download className="w-3.5 h-3.5 text-amber-600" />
+          <span>Statement</span>
+        </button>
         <button
           onClick={() => setShowTrendModal(true)}
-          className="flex-1 py-3 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 text-xs font-semibold flex items-center justify-center gap-2 shadow-xs"
+          className="py-3 px-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 text-xs font-semibold flex items-center justify-center gap-1.5 shadow-xs"
         >
-          <BarChart3 className="w-4 h-4 text-emerald-600" />
-          <span>Financial Trend</span>
+          <BarChart3 className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Trends</span>
         </button>
         <button
           onClick={() => setShowRecentModal(true)}
-          className="flex-1 py-3 px-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 text-xs font-semibold flex items-center justify-center gap-2 shadow-xs"
+          className="py-3 px-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 text-xs font-semibold flex items-center justify-center gap-1.5 shadow-xs"
         >
-          <History className="w-4 h-4 text-blue-600" />
-          <span>Recent Activity</span>
+          <History className="w-3.5 h-3.5 text-blue-600" />
+          <span>Recent</span>
         </button>
       </div>
 
@@ -437,6 +542,191 @@ export default function DashboardPage({ onNavigate }) {
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Financial Statement & Ledger PDF Filter Modal */}
+      {showStatementModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600" />
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Financial Statement / Ledger
+                  </h3>
+                  <p className="text-xs text-slate-400">Total Income, Expense &amp; Running Balance PDF</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowStatementModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-2">
+                  Select Report Period / Filter
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'all', label: 'All Records (Till Date)' },
+                    { id: 'month', label: 'Specific Month' },
+                    { id: 'year', label: 'Specific Year' },
+                    { id: 'range', label: 'Custom Date Range' }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setStatementFilter({ ...statementFilter, type: tab.id })}
+                      className={`px-3 py-2 text-xs font-bold rounded-xl border text-center transition-all ${
+                        statementFilter.type === tab.id
+                          ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                          : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Dynamic Inputs according to filter */}
+              {statementFilter.type === 'tillDate' || statementFilter.type === 'all' ? (
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80">
+                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                    Calculate All Transactions Till Date
+                  </label>
+                  <input
+                    type="date"
+                    value={statementFilter.tillDate}
+                    onChange={(e) => setStatementFilter({ ...statementFilter, tillDate: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1.5">
+                    Includes all incomes and expenses from the beginning up to the selected date with day-by-day running balance.
+                  </p>
+                </div>
+              ) : null}
+
+              {statementFilter.type === 'month' && (
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                        Month
+                      </label>
+                      <select
+                        value={statementFilter.month}
+                        onChange={(e) => setStatementFilter({ ...statementFilter, month: parseInt(e.target.value) })}
+                        className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      >
+                        {MONTH_NAMES.map((name, i) => (
+                          <option key={i + 1} value={i + 1}>{name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                        Year
+                      </label>
+                      <select
+                        value={statementFilter.year}
+                        onChange={(e) => setStatementFilter({ ...statementFilter, year: parseInt(e.target.value) })}
+                        className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      >
+                        {[curYear + 1, curYear, curYear - 1, curYear - 2, curYear - 3].map(y => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Automatically computes the Opening Balance up to the 1st of the month, then tracks each transaction to conclude the net closing balance.
+                  </p>
+                </div>
+              )}
+
+              {statementFilter.type === 'year' && (
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-2">
+                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                    Select Financial Year
+                  </label>
+                  <select
+                    value={statementFilter.year}
+                    onChange={(e) => setStatementFilter({ ...statementFilter, year: parseInt(e.target.value) })}
+                    className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  >
+                    {[curYear + 1, curYear, curYear - 1, curYear - 2, curYear - 3].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400">
+                    Full annual financial ledger statement with beginning balance as of January 1st and closing balance as of December 31st.
+                  </p>
+                </div>
+              )}
+
+              {statementFilter.type === 'range' && (
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                        From Date
+                      </label>
+                      <input
+                        type="date"
+                        value={statementFilter.startDate}
+                        onChange={(e) => setStatementFilter({ ...statementFilter, startDate: e.target.value })}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                        To Date
+                      </label>
+                      <input
+                        type="date"
+                        value={statementFilter.endDate}
+                        onChange={(e) => setStatementFilter({ ...statementFilter, endDate: e.target.value })}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Custom statement with Opening Balance calculated up to the 'From Date' and running balance through the 'To Date'.
+                  </p>
+                </div>
+              )}
+
+              <div className="p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-900/40 text-[11px] text-slate-600 dark:text-slate-300">
+                <strong>Accounting Structure:</strong> Formatted with title <em>Masjid al noor</em> and subtitle <em>sirajul huda sangam chulliyode</em>, Opening Balance, chronologically interleaved Incomes &amp; Expenses, and final Net Balance.
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowStatementModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadStatement}
+                disabled={generatingPdf}
+                className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md disabled:opacity-50 transition-all"
+              >
+                <Download className="w-4 h-4" />
+                {generatingPdf ? 'Generating PDF...' : 'Download Statement (PDF)'}
+              </button>
             </div>
           </div>
         </div>

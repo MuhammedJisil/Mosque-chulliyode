@@ -14,13 +14,13 @@ const safe = (str) =>
   typeof str === 'string' ? str.replace(/₹/g, 'Rs.') : str;
 
 export const exportToPdf = ({
-  title = 'JAMIA AN-NOOR Financial Statement',
+  title = 'Masjid al noor Financial Statement',
   subtitle = '',
   dateRange = 'All Records',
   columns = [],
   rows = [],
   summaryRows = [],
-  fileName = 'jamia_annoor_statement.pdf'
+  fileName = 'masjid_al_noor_statement.pdf'
 }) => {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -38,13 +38,13 @@ export const exportToPdf = ({
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
-  doc.text('JAMIA AN-NOOR', pageW / 2, 30, { align: 'center' });
+  doc.text('Masjid al noor', pageW / 2, 30, { align: 'center' });
 
-  // English subtitle only — Arabic is unsupported in Helvetica and renders as garbage
+  // Subtitle
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(220, 252, 231);
-  doc.text('Masjid Management System', pageW / 2, 48, { align: 'center' });
+  doc.text('sirajul huda sangam chulliyode', pageW / 2, 48, { align: 'center' });
 
   // Report type label
   doc.setFontSize(11);

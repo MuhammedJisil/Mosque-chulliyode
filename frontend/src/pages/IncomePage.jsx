@@ -39,6 +39,9 @@ export default function IncomePage() {
   const [selectedPaymentMode, setSelectedPaymentMode] = useState('All');
   const [selectedMonth, setSelectedMonth] = useState('All');
   const [selectedYear, setSelectedYear] = useState('All');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [memberPaymentsOnly, setMemberPaymentsOnly] = useState(false);
   const [sortOrder, setSortOrder] = useState('newest'); // 'newest' or 'oldest'
 
   // Custom Categories list from API
@@ -80,6 +83,10 @@ export default function IncomePage() {
         paymentMode: selectedPaymentMode !== 'All' ? selectedPaymentMode : undefined,
         month: selectedMonth !== 'All' ? selectedMonth : undefined,
         year: selectedYear !== 'All' ? selectedYear : undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        source: memberPaymentsOnly ? 'members' : undefined,
+        isMemberPayment: memberPaymentsOnly ? 'true' : undefined,
         sort: sortOrder,
       };
       const res = await api.get('/api/income', params);
@@ -111,7 +118,7 @@ export default function IncomePage() {
 
   useEffect(() => {
     fetchIncomes();
-  }, [search, selectedCategory, selectedPaymentMode, selectedMonth, selectedYear, sortOrder]);
+  }, [search, selectedCategory, selectedPaymentMode, selectedMonth, selectedYear, startDate, endDate, memberPaymentsOnly, sortOrder]);
 
   const handleOpenAdd = () => {
     setEditingItem(null);
@@ -193,15 +200,15 @@ export default function IncomePage() {
     const total = dataToExport.reduce((acc, c) => acc + c.amount, 0);
 
     exportToPdf({
-      title: 'JAMIA AN-NOOR - Income Statement',
-      subtitle: `Total Records: ${dataToExport.length}`,
+      title: 'Masjid al noor - Income Statement',
+      subtitle: `sirajul huda sangam chulliyode • Total Records: ${dataToExport.length}`,
       dateRange: periodLabel,
       columns,
       rows,
       summaryRows: [
         { label: 'Total Collections:', value: '₹' + Number(total).toLocaleString('en-IN'), bold: true, highlight: true }
       ],
-      fileName: `Jamia_AnNoor_Income_${periodLabel.replace(/\s+/g, '_')}.pdf`
+      fileName: `Masjid_Al_Noor_Income_${periodLabel.replace(/\s+/g, '_')}.pdf`
     });
   };
 
@@ -305,12 +312,15 @@ export default function IncomePage() {
               className="w-full px-2.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
             >
               <option value="All">All Categories</option>
-              {DEFAULT_INCOME_CATEGORIES.map((c, i) => (
-                <option key={i} value={c}>{c}</option>
-              ))}
-              {customCategories.map((c, i) => (
-                <option key={`c-${i}`} value={c.name}>{c.name}</option>
-              ))}
+              {customCategories.length > 0 ? (
+                customCategories.map((c, i) => (
+                  <option key={c.id || i} value={c.name}>{c.name}</option>
+                ))
+              ) : (
+                DEFAULT_INCOME_CATEGORIES.map((c, i) => (
+                  <option key={i} value={c}>{c}</option>
+                ))
+              )}
             </select>
           </div>
 
@@ -355,12 +365,66 @@ export default function IncomePage() {
           </div>
         </div>
 
-        {/* Total Sum Bar */}
-        <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
-          <span className="text-slate-500">Filtered Total Collection:</span>
-          <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">
-            ₹{totalAmountSum.toLocaleString('en-IN')}
-          </span>
+        {/* Date Range and Member Payment Quick Filter Row */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Quick Filter: Member Monthly Payments */}
+            <button
+              type="button"
+              onClick={() => setMemberPaymentsOnly(!memberPaymentsOnly)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                memberPaymentsOnly
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
+              }`}
+            >
+              <span>👥</span>
+              <span>Member Monthly Payments {memberPaymentsOnly ? '✓' : ''}</span>
+            </button>
+
+            {/* Date Range Pickers */}
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <span className="text-[11px] font-semibold">From:</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="px-2 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none"
+              />
+              <span className="text-[11px] font-semibold">To:</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="px-2 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none"
+              />
+              {(startDate || endDate || memberPaymentsOnly || selectedCategory !== 'All' || selectedPaymentMode !== 'All' || selectedMonth !== 'All' || search) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch('');
+                    setSelectedCategory('All');
+                    setSelectedPaymentMode('All');
+                    setSelectedMonth('All');
+                    setSelectedYear('All');
+                    setStartDate('');
+                    setEndDate('');
+                    setMemberPaymentsOnly(false);
+                  }}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-slate-500">Filtered Total Collection:</span>
+            <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">
+              ₹{totalAmountSum.toLocaleString('en-IN')}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -576,8 +640,8 @@ export default function IncomePage() {
 
       {/* View Income Details Modal */}
       {showViewModal && viewingItem && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-lg w-full my-auto sm:my-8 p-5 sm:p-6 border border-slate-200 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-emerald-600" />
@@ -713,8 +777,8 @@ export default function IncomePage() {
 
       {/* Add / Edit Income Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full my-auto sm:my-8 p-5 sm:p-6 border border-slate-200 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-xl w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 {editingItem ? 'Edit Income Record' : 'Record New Income'}
@@ -774,14 +838,16 @@ export default function IncomePage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Category Dropdown (with custom category addition) */}
+                {/* Category Dropdown (with custom category addition, edit & delete) */}
                 <CategoryDropdown
                   label="Category"
                   value={formData.category}
                   onChange={(cat) => setFormData({ ...formData, category: cat })}
                   defaultCategories={DEFAULT_INCOME_CATEGORIES}
                   customCategories={customCategories}
-                  onCategoryAdded={(newCat) => setCustomCategories([...customCategories, newCat])}
+                  onCategoryAdded={fetchCustomCategories}
+                  onCategoryUpdated={fetchCustomCategories}
+                  onCategoryDeleted={fetchCustomCategories}
                   type="INCOME"
                   required
                 />

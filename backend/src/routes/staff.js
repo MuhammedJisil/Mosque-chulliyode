@@ -152,17 +152,17 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     const { name, phone, salary, category, joiningDate, status = 'Active', description } = req.body;
 
-    if (!name || !phone || salary === undefined || !category) {
+    if (!name || salary === undefined || !category) {
       return res.status(400).json({
         success: false,
-        message: 'Name, Phone, Salary, and Category are required.'
+        message: 'Name, Salary, and Category are required.'
       });
     }
 
     const newStaff = await prisma.staff.create({
       data: {
         name,
-        phone,
+        phone: phone ? String(phone).trim() : '',
         salary: parseFloat(salary),
         category,
         joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
@@ -191,7 +191,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       where: { id: parseInt(req.params.id) },
       data: {
         name,
-        phone,
+        phone: phone !== undefined ? String(phone).trim() : undefined,
         ...(salary !== undefined ? { salary: parseFloat(salary) } : {}),
         category,
         ...(joiningDate ? { joiningDate: new Date(joiningDate) } : {}),
@@ -214,10 +214,31 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // Delete Staff
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    await prisma.staff.delete({
-      where: { id: parseInt(req.params.id) }
+    const staffId = parseInt(req.params.id);
+    const staff = await prisma.staff.findUnique({
+      where: { id: staffId },
+      include: { payments: true }
     });
-    res.json({ success: true, message: 'Staff member deleted successfully' });
+
+    if (staff) {
+      const paymentIds = (staff.payments || []).map(p => p.id);
+      // Delete any synced expense records
+      await prisma.expense.deleteMany({
+        where: {
+          OR: [
+            { staffId: staffId },
+            ...(paymentIds.length > 0 ? [{ staffPaymentId: { in: paymentIds } }] : []),
+            { paidTo: staff.name, category: 'Staff Salary' }
+          ]
+        }
+      });
+
+      await prisma.staff.delete({
+        where: { id: staffId }
+      });
+    }
+
+    res.json({ success: true, message: 'Staff member and associated expense records deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -273,9 +294,9 @@ router.post('/:id/payout', authMiddleware, async (req, res) => {
       }
     });
 
-    // 2. Automatically log in Expense
+    // 2. Automatically log in Expense with link
     const purpose = `Staff Salary - ${staff.name} (${staff.category}) for ${monthLabel} ${payYear}`;
-    let expenseDesc = `Monthly salary disbursement. Phone: ${staff.phone}. Receipt: ${receiptNo}.`;
+    let expenseDesc = `Monthly salary disbursement. Phone: ${staff.phone || 'N/A'}. Receipt: ${receiptNo}.`;
     if (notes) expenseDesc += ` Remarks: ${notes}`;
 
     const expense = await prisma.expense.create({
@@ -286,6 +307,8 @@ router.post('/:id/payout', authMiddleware, async (req, res) => {
         amount: payAmount,
         paymentMode,
         description: expenseDesc,
+        staffPaymentId: staffPayment.id,
+        staffId: staff.id,
         date: new Date(),
       }
     });
@@ -298,6 +321,45 @@ router.post('/:id/payout', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('Staff payout error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Revert / Delete Staff Salary Payout
+router.delete('/:id/payments/:paymentId', authMiddleware, async (req, res) => {
+  try {
+    const staffId = parseInt(req.params.id);
+    const paymentId = parseInt(req.params.paymentId);
+
+    const payment = await prisma.staffPayment.findFirst({
+      where: { id: paymentId, staffId }
+    });
+
+    if (!payment) {
+      return res.status(404).json({ success: false, message: 'Salary payment record not found' });
+    }
+
+    // Delete linked expense
+    await prisma.expense.deleteMany({
+      where: {
+        OR: [
+          { staffPaymentId: paymentId },
+          ...(payment.receiptNo ? [{ description: { contains: payment.receiptNo } }] : [])
+        ]
+      }
+    });
+
+    // Delete staff payment
+    await prisma.staffPayment.delete({
+      where: { id: paymentId }
+    });
+
+    res.json({
+      success: true,
+      message: 'Salary payment reverted and corresponding Expense record removed successfully.'
+    });
+  } catch (error) {
+    console.error('Revert staff payment error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

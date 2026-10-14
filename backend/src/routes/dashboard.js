@@ -120,4 +120,144 @@ router.get('/stats', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/dashboard/statement
+// Generates accounting cashbook ledger with running balance, opening balance, and filters
+router.get('/statement', authMiddleware, async (req, res) => {
+  try {
+    const { type = 'all', month, year, startDate: qStartDate, endDate: qEndDate, tillDate } = req.query;
+    const now = new Date();
+
+    let startDate = null;
+    let endDate = null;
+    let periodLabel = 'All Records';
+
+    if (type === 'month') {
+      const targetYear = parseInt(year) || now.getFullYear();
+      const targetMonth = parseInt(month) || (now.getMonth() + 1);
+      startDate = new Date(targetYear, targetMonth - 1, 1, 0, 0, 0, 0);
+      endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59, 999);
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      periodLabel = `${monthNames[targetMonth - 1]} ${targetYear}`;
+    } else if (type === 'year') {
+      const targetYear = parseInt(year) || now.getFullYear();
+      startDate = new Date(targetYear, 0, 1, 0, 0, 0, 0);
+      endDate = new Date(targetYear, 11, 31, 23, 59, 59, 999);
+      periodLabel = `Year ${targetYear}`;
+    } else if (type === 'range' && qStartDate && qEndDate) {
+      startDate = new Date(`${qStartDate}T00:00:00`);
+      endDate = new Date(`${qEndDate}T23:59:59.999`);
+      periodLabel = `${new Date(startDate).toLocaleDateString('en-GB')} to ${new Date(endDate).toLocaleDateString('en-GB')}`;
+    } else if (type === 'tillDate' && tillDate) {
+      endDate = new Date(`${tillDate}T23:59:59.999`);
+      periodLabel = `Till Date: ${new Date(endDate).toLocaleDateString('en-GB')}`;
+    } else {
+      endDate = new Date();
+      periodLabel = `All Records (Till ${new Date().toLocaleDateString('en-GB')})`;
+    }
+
+    // 1. Calculate Opening Balance before startDate
+    let openingBalance = 0;
+    if (startDate) {
+      const priorIncome = await prisma.income.aggregate({
+        where: { date: { lt: startDate } },
+        _sum: { amount: true }
+      });
+      const priorExpense = await prisma.expense.aggregate({
+        where: { date: { lt: startDate } },
+        _sum: { amount: true }
+      });
+      openingBalance = (priorIncome._sum.amount || 0) - (priorExpense._sum.amount || 0);
+    }
+
+    // 2. Query Incomes and Expenses within period
+    const incomeWhere = {
+      date: {
+        ...(startDate ? { gte: startDate } : {}),
+        ...(endDate ? { lte: endDate } : {})
+      }
+    };
+    const expenseWhere = {
+      date: {
+        ...(startDate ? { gte: startDate } : {}),
+        ...(endDate ? { lte: endDate } : {})
+      }
+    };
+
+    const incomes = await prisma.income.findMany({
+      where: incomeWhere,
+      orderBy: { date: 'asc' }
+    });
+
+    const expenses = await prisma.expense.findMany({
+      where: expenseWhere,
+      orderBy: { date: 'asc' }
+    });
+
+    // 3. Merge, tag, and sort chronologically
+    const combined = [
+      ...incomes.map(inc => ({
+        id: `inc-${inc.id}`,
+        date: inc.date,
+        title: inc.title,
+        category: inc.category,
+        paymentMode: inc.paymentMode,
+        receiptNo: inc.receiptNo,
+        type: 'INCOME',
+        incomeAmount: Number(inc.amount || 0),
+        expenseAmount: 0
+      })),
+      ...expenses.map(exp => ({
+        id: `exp-${exp.id}`,
+        date: exp.date,
+        title: exp.title,
+        category: exp.category,
+        paymentMode: exp.paymentMode,
+        receiptNo: exp.invoiceNo,
+        type: 'EXPENSE',
+        incomeAmount: 0,
+        expenseAmount: Number(exp.amount || 0)
+      }))
+    ];
+
+    combined.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // 4. Compute running ledger balance
+    let runningBalance = openingBalance;
+    let totalIncome = 0;
+    let totalExpense = 0;
+
+    const ledger = combined.map(entry => {
+      if (entry.type === 'INCOME') {
+        runningBalance += entry.incomeAmount;
+        totalIncome += entry.incomeAmount;
+      } else {
+        runningBalance -= entry.expenseAmount;
+        totalExpense += entry.expenseAmount;
+      }
+      return {
+        ...entry,
+        balance: runningBalance
+      };
+    });
+
+    const closingBalance = openingBalance + totalIncome - totalExpense;
+
+    res.json({
+      success: true,
+      periodLabel,
+      summary: {
+        openingBalance,
+        totalIncome,
+        totalExpense,
+        closingBalance,
+        transactionsCount: ledger.length
+      },
+      ledger
+    });
+  } catch (error) {
+    console.error('Financial statement error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;

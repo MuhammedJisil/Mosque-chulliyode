@@ -169,15 +169,15 @@ router.post('/', authMiddleware, async (req, res) => {
       notes
     } = req.body;
 
-    if (!name || !phone) {
-      return res.status(400).json({ success: false, message: 'Name and Phone number are required.' });
+    if (!name) {
+      return res.status(400).json({ success: false, message: 'Name is required.' });
     }
 
     const newMember = await prisma.member.create({
       data: {
         name,
         address: address || '',
-        phone,
+        phone: phone ? String(phone).trim() : '',
         joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
         monthlyDonation: parseFloat(monthlyDonation) || 100,
         openingBalance: parseFloat(openingBalance) || 0,
@@ -222,7 +222,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       data: {
         name,
         address,
-        phone,
+        phone: phone !== undefined ? String(phone).trim() : undefined,
         ...(joiningDate ? { joiningDate: new Date(joiningDate) } : {}),
         ...(monthlyDonation !== undefined ? { monthlyDonation: parseFloat(monthlyDonation) } : {}),
         ...(openingBalance !== undefined ? { openingBalance: parseFloat(openingBalance) } : {}),
@@ -245,19 +245,40 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// Delete Member
+// Delete Member and associated Income records
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    await prisma.member.delete({
-      where: { id: parseInt(req.params.id) }
+    const memberId = parseInt(req.params.id);
+    const member = await prisma.member.findUnique({
+      where: { id: memberId },
+      include: { payments: true }
     });
-    res.json({ success: true, message: 'Member deleted successfully' });
+
+    if (member) {
+      const paymentIds = (member.payments || []).map(p => p.id);
+      // Clean up linked income records
+      await prisma.income.deleteMany({
+        where: {
+          OR: [
+            { memberId: memberId },
+            ...(paymentIds.length > 0 ? [{ memberPaymentId: { in: paymentIds } }] : []),
+            { donorName: member.name, category: 'Member Monthly Payment' }
+          ]
+        }
+      });
+
+      await prisma.member.delete({
+        where: { id: memberId }
+      });
+    }
+
+    res.json({ success: true, message: 'Member and linked income records deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Record a Member Payment
+// Record Member Payment(s) - Supports single month, multiple months, and opening balance
 router.post('/:id/payments', authMiddleware, async (req, res) => {
   try {
     const memberId = parseInt(req.params.id);
@@ -268,7 +289,8 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
       madrasaAmount = 0,
       openingBalanceAmount = 0,
       paymentMode = 'Cash in Hand',
-      notes
+      notes,
+      months = [] // Array of { month, year } for multi-month payment
     } = req.body;
 
     const member = await prisma.member.findUnique({ where: { id: memberId } });
@@ -276,10 +298,105 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Member not found' });
     }
 
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+    // If multiple months provided
+    if (Array.isArray(months) && months.length > 0) {
+      // Validate none of these months are already paid
+      for (const mItem of months) {
+        const mN = parseInt(mItem.month);
+        const yN = parseInt(mItem.year);
+        const existing = await prisma.memberPayment.findFirst({
+          where: { memberId, month: mN, year: yN }
+        });
+        if (existing) {
+          return res.status(400).json({
+            success: false,
+            message: `${member.name} has already paid for ${monthNames[mN - 1]} ${yN}. Please uncheck already paid months.`
+          });
+        }
+      }
+
+      const totalMembership = parseFloat(membershipAmount) || 0;
+      const totalMadrasa = parseFloat(madrasaAmount) || 0;
+      const totalOpening = parseFloat(openingBalanceAmount) || 0;
+      const totalOverall = totalMembership + totalMadrasa + totalOpening;
+
+      if (totalOverall <= 0) {
+        return res.status(400).json({ success: false, message: 'Payment total amount must be greater than zero.' });
+      }
+
+      const numMonths = months.length;
+      const perMonthMembership = Math.round((totalMembership / numMonths) * 100) / 100;
+      const perMonthMadrasa = Math.round((totalMadrasa / numMonths) * 100) / 100;
+
+      // Unique Shared Receipt No for the entire batch payment
+      const sharedReceiptNo = `RCP-${Date.now().toString().slice(-6)}-${memberId}`;
+
+      const createdPayments = await prisma.$transaction(async (tx) => {
+        const batch = [];
+        for (let idx = 0; idx < numMonths; idx++) {
+          const mItem = months[idx];
+          const mN = parseInt(mItem.month);
+          const yN = parseInt(mItem.year);
+          // Include opening balance amount on the first month record
+          const openBalThis = idx === 0 ? totalOpening : 0;
+          const totalThis = perMonthMembership + perMonthMadrasa + openBalThis;
+
+          const payment = await tx.memberPayment.create({
+            data: {
+              memberId,
+              month: mN,
+              year: yN,
+              membershipAmount: perMonthMembership,
+              madrasaAmount: perMonthMadrasa,
+              openingBalanceAmount: openBalThis,
+              totalAmount: totalThis,
+              paymentMode,
+              receiptNo: sharedReceiptNo,
+              notes: notes || '',
+            }
+          });
+          batch.push(payment);
+        }
+
+        // Create ONLY ONE consolidated Income record for the whole multi-month payment
+        const monthListText = months.map(m => `${monthNames[m.month - 1]} ${m.year}`).join(', ');
+        let incomeDesc = `Monthly donation for ${numMonths} month(s): ${monthListText}.`;
+        if (totalMadrasa > 0) incomeDesc += ` (Madrasa: ₹${totalMadrasa})`;
+        if (totalOpening > 0) incomeDesc += ` (Opening Balance: ₹${totalOpening})`;
+        if (notes) incomeDesc += ` Note: ${notes}`;
+
+        await tx.income.create({
+          data: {
+            donorName: member.name,
+            donorPhone: member.phone || '',
+            donorAddress: member.address || '',
+            category: 'Member Monthly Payment',
+            amount: totalOverall,
+            paymentMode,
+            description: incomeDesc,
+            receiptNo: sharedReceiptNo,
+            memberPaymentId: batch[0].id,
+            memberId: member.id,
+            date: new Date(),
+          }
+        });
+
+        return batch;
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: `Successfully recorded payment of ₹${totalOverall} for ${numMonths} month(s) and synced as single Income entry!`,
+        payments: createdPayments,
+      });
+    }
+
+    // Single month payment handling
     const mNum = parseInt(month) || 0;
     const yNum = parseInt(year) || new Date().getFullYear();
 
-    // Check if payment for this month and year has already been recorded (for monthly subscriptions)
     if (mNum > 0 && parseFloat(membershipAmount) > 0) {
       const existingPayment = await prisma.memberPayment.findFirst({
         where: {
@@ -290,7 +407,6 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
       });
 
       if (existingPayment) {
-        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
         const mName = monthNames[mNum - 1];
         return res.status(400).json({
           success: false,
@@ -310,52 +426,55 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
 
     const receiptNo = `RCP-${yNum}${String(mNum).padStart(2, '0')}-${String(memberId).padStart(3, '0')}-${Date.now().toString().slice(-4)}`;
 
-    // Create payment record
-    const payment = await prisma.memberPayment.create({
-      data: {
-        memberId,
-        month: mNum,
-        year: yNum,
-        membershipAmount: parsedMembership,
-        madrasaAmount: parsedMadrasa,
-        openingBalanceAmount: parsedOpeningBal,
-        totalAmount,
-        paymentMode,
-        receiptNo,
-        notes: notes || '',
+    const payment = await prisma.$transaction(async (tx) => {
+      const p = await tx.memberPayment.create({
+        data: {
+          memberId,
+          month: mNum,
+          year: yNum,
+          membershipAmount: parsedMembership,
+          madrasaAmount: parsedMadrasa,
+          openingBalanceAmount: parsedOpeningBal,
+          totalAmount,
+          paymentMode,
+          receiptNo,
+          notes: notes || '',
+        }
+      });
+
+      const monthStr = mNum > 0 ? monthNames[mNum - 1] : '';
+      let incomeDesc = '';
+      if (mNum > 0 && parsedMembership > 0) {
+        incomeDesc += `Monthly subscription for ${monthStr} ${yNum}.`;
       }
-    });
-
-    // Automatically sync as an Income entry
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    const monthStr = mNum > 0 ? monthNames[mNum - 1] : '';
-
-    let incomeDesc = '';
-    if (mNum > 0 && parsedMembership > 0) {
-      incomeDesc += `Monthly subscription for ${monthStr} ${yNum}.`;
-    }
-    if (parsedMadrasa > 0) {
-      incomeDesc += ` (Includes Madrasa Fee: ₹${parsedMadrasa})`;
-    }
-    if (parsedOpeningBal > 0) {
-      incomeDesc += ` (Past Arrears / Opening Balance Paid: ₹${parsedOpeningBal})`;
-    }
-    if (!incomeDesc) {
-      incomeDesc = `Payment towards past opening balance/arrears`;
-    }
-    if (notes) incomeDesc += ` Note: ${notes}`;
-
-    await prisma.income.create({
-      data: {
-        donorName: member.name,
-        donorPhone: member.phone || '',
-        donorAddress: member.address || '',
-        category: 'Donation',
-        amount: totalAmount,
-        paymentMode: paymentMode,
-        description: incomeDesc,
-        date: new Date(),
+      if (parsedMadrasa > 0) {
+        incomeDesc += ` (Includes Madrasa Fee: ₹${parsedMadrasa})`;
       }
+      if (parsedOpeningBal > 0) {
+        incomeDesc += ` (Opening Balance Paid: ₹${parsedOpeningBal})`;
+      }
+      if (!incomeDesc) {
+        incomeDesc = `Payment towards opening balance`;
+      }
+      if (notes) incomeDesc += ` Note: ${notes}`;
+
+      await tx.income.create({
+        data: {
+          donorName: member.name,
+          donorPhone: member.phone || '',
+          donorAddress: member.address || '',
+          category: 'Member Monthly Payment',
+          amount: totalAmount,
+          paymentMode: paymentMode,
+          description: incomeDesc,
+          receiptNo,
+          memberPaymentId: p.id,
+          memberId: member.id,
+          date: new Date(),
+        }
+      });
+
+      return p;
     });
 
     res.status(201).json({
@@ -365,6 +484,62 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('Record member payment error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Revert / Delete a Member Payment (handles single or multi-month batch)
+router.delete('/:id/payments/:paymentId', authMiddleware, async (req, res) => {
+  try {
+    const memberId = parseInt(req.params.id);
+    const paymentId = parseInt(req.params.paymentId);
+
+    const payment = await prisma.memberPayment.findFirst({
+      where: { id: paymentId, memberId }
+    });
+
+    if (!payment) {
+      return res.status(404).json({ success: false, message: 'Payment record not found' });
+    }
+
+    if (payment.receiptNo) {
+      // Find all payments belonging to this transaction batch
+      const batchPayments = await prisma.memberPayment.findMany({
+        where: { memberId, receiptNo: payment.receiptNo }
+      });
+      const batchIds = batchPayments.map(p => p.id);
+
+      // Delete linked Income record(s) safely
+      await prisma.income.deleteMany({
+        where: {
+          OR: [
+            { memberPaymentId: { in: batchIds } },
+            { receiptNo: payment.receiptNo },
+            { description: { contains: payment.receiptNo } }
+          ]
+        }
+      }).catch(err => console.error('Income delete warning:', err));
+
+      // Delete all payments in this transaction batch
+      await prisma.memberPayment.deleteMany({
+        where: { memberId, receiptNo: payment.receiptNo }
+      });
+    } else {
+      // Single record without receiptNo
+      await prisma.income.deleteMany({
+        where: { memberPaymentId: paymentId }
+      }).catch(err => console.error('Income delete warning:', err));
+      await prisma.memberPayment.delete({
+        where: { id: paymentId }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Payment reverted and corresponding Income record removed successfully.'
+    });
+  } catch (error) {
+    console.error('Revert member payment error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

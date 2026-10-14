@@ -12,9 +12,12 @@ const expenseRoutes = require('./routes/expense');
 const memberRoutes = require('./routes/members');
 const staffRoutes = require('./routes/staff');
 const categoryRoutes = require('./routes/categories');
+const backupRoutes = require('./routes/backup');
 
 const app = express();
-const PORT = process.env.PORT || 5001;
+// Default to 5001. If PORT is set to 5000, redirect to 5001 because macOS Control Center AirPlay Receiver occupies 5000
+const rawPort = parseInt(process.env.PORT, 10);
+const PORT = (!rawPort || rawPort === 5000) ? 5001 : rawPort;
 
 // Trust reverse proxy (Cloudflare, Render, Railway, Nginx) for correct client IP detection
 app.set('trust proxy', 1);
@@ -83,6 +86,7 @@ app.use('/api/expense', expenseRoutes);
 app.use('/api/members', memberRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/backup', backupRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

@@ -19,7 +19,7 @@ export const openWhatsAppDueReminder = (member) => {
     : `${member.dueMonthsCount || 0} Month(s)`;
 
   let message = `*Assalamu Alaikum wa Rahmatullahi wa Barakatuhu, ${member.name}* 🕌\n\n`;
-  message += `This is a gentle notification from *جامعة النور (Jamia An-Noor) Masjid Committee* regarding your monthly subscription.\n\n`;
+  message += `This is a gentle notification from *Masjid al noor (sirajul huda sangam chulliyode)* regarding your monthly subscription.\n\n`;
   message += `📌 *Due Details:*\n`;
 
   if (member.dueMonthsCount > 0) {
@@ -33,13 +33,13 @@ export const openWhatsAppDueReminder = (member) => {
   }
 
   if ((member.netOpeningBalanceDue || 0) > 0) {
-    message += `• *Past Arrears (Opening Balance):* ₹${member.netOpeningBalanceDue}\n`;
+    message += `• *Opening Balance:* ₹${member.netOpeningBalanceDue}\n`;
   }
 
   message += `\n💵 *Total Outstanding Due:* *₹${member.totalDueAmount || 0}*\n\n`;
   message += `Kindly remit your contribution at your earliest convenience to support the Masjid expenses and Madrasa operations.\n\n`;
   message += `You may pay via UPI / GPay / PhonePe to the Masjid QR code or hand over directly to the Cashier at the Masjid office.\n\n`;
-  message += `*JazakAllahu Khairan wa Ahsanal Jaza!* 🤲\n_جامعة النور — Jamia An-Noor Management Committee_`;
+  message += `*JazakAllahu Khairan wa Ahsanal Jaza!* 🤲\n_Masjid al noor — sirajul huda sangam chulliyode_`;
 
   const encoded = encodeURIComponent(message);
   const url = `https://wa.me/${cleanPhone}?text=${encoded}`;

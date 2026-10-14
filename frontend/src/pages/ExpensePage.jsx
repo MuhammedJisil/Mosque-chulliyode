@@ -186,15 +186,15 @@ export default function ExpensePage() {
     const total = dataToExport.reduce((acc, c) => acc + c.amount, 0);
 
     exportToPdf({
-      title: 'JAMIA AN-NOOR - Expense Statement',
-      subtitle: `Total Records: ${dataToExport.length}`,
+      title: 'Masjid al noor - Expense Statement',
+      subtitle: `sirajul huda sangam chulliyode • Total Records: ${dataToExport.length}`,
       dateRange: periodLabel,
       columns,
       rows,
       summaryRows: [
         { label: 'Total Expenditures:', value: '₹' + Number(total).toLocaleString('en-IN'), bold: true, highlight: true }
       ],
-      fileName: `Jamia_AnNoor_Expense_${periodLabel.replace(/\s+/g, '_')}.pdf`
+      fileName: `Masjid_Al_Noor_Expense_${periodLabel.replace(/\s+/g, '_')}.pdf`
     });
   };
 
@@ -295,12 +295,15 @@ export default function ExpensePage() {
               className="w-full px-2.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-rose-500 focus:outline-none"
             >
               <option value="All">All Categories</option>
-              {DEFAULT_EXPENSE_CATEGORIES.map((c, i) => (
-                <option key={i} value={c}>{c}</option>
-              ))}
-              {customCategories.map((c, i) => (
-                <option key={`c-${i}`} value={c.name}>{c.name}</option>
-              ))}
+              {customCategories.length > 0 ? (
+                customCategories.map((c, i) => (
+                  <option key={c.id || i} value={c.name}>{c.name}</option>
+                ))
+              ) : (
+                DEFAULT_EXPENSE_CATEGORIES.map((c, i) => (
+                  <option key={i} value={c}>{c}</option>
+                ))
+              )}
             </select>
           </div>
 
@@ -565,8 +568,8 @@ export default function ExpensePage() {
 
       {/* View Expense Details Modal */}
       {showViewModal && viewingItem && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-lg w-full my-auto sm:my-8 p-5 sm:p-6 border border-slate-200 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-rose-600" />
@@ -694,8 +697,8 @@ export default function ExpensePage() {
 
       {/* Add / Edit Expense Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full my-auto sm:my-8 p-5 sm:p-6 border border-slate-200 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 {editingItem ? 'Edit Expense Record' : 'Record New Expense'}
@@ -749,7 +752,9 @@ export default function ExpensePage() {
                   onChange={(cat) => setFormData({ ...formData, category: cat })}
                   defaultCategories={DEFAULT_EXPENSE_CATEGORIES}
                   customCategories={customCategories}
-                  onCategoryAdded={(newCat) => setCustomCategories([...customCategories, newCat])}
+                  onCategoryAdded={fetchCustomCategories}
+                  onCategoryUpdated={fetchCustomCategories}
+                  onCategoryDeleted={fetchCustomCategories}
                   type="EXPENSE"
                   required
                 />

@@ -1,14 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { Sun, Moon, LogOut, Shield, Menu } from 'lucide-react';
+import { Sun, Moon, LogOut, Shield, Menu, Database } from 'lucide-react';
+import BackupRestoreModal from './BackupRestoreModal';
 
 export default function Navbar({ onToggleSidebar }) {
   const { admin, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const [showBackupModal, setShowBackupModal] = useState(false);
 
   return (
-    <header className="sticky top-0 z-30 w-full glass-panel border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
+    <>
+      <header className="sticky top-0 z-30 w-full glass-panel border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
       <div className="flex items-center justify-between h-16 px-4 md:px-8">
         <div className="flex items-center gap-3">
           <button
@@ -39,7 +42,18 @@ export default function Navbar({ onToggleSidebar }) {
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Backup & Restore Data */}
+          <button
+            type="button"
+            onClick={() => setShowBackupModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/60 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all text-xs font-semibold"
+            title="Backup & Restore Data"
+          >
+            <Database className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="hidden sm:inline">Backup & Restore</span>
+          </button>
+
           {/* Theme Toggle */}
           <button
             type="button"
@@ -76,5 +90,11 @@ export default function Navbar({ onToggleSidebar }) {
         </div>
       </div>
     </header>
-  );
+
+    <BackupRestoreModal
+      isOpen={showBackupModal}
+      onClose={() => setShowBackupModal(false)}
+    />
+  </>
+);
 }

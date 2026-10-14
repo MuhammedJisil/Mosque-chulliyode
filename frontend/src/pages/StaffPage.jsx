@@ -20,7 +20,8 @@ import {
   History,
   AlertCircle,
   CheckCircle2,
-  ChevronRight
+  ChevronRight,
+  RotateCcw
 } from 'lucide-react';
 
 export default function StaffPage() {
@@ -201,13 +202,33 @@ export default function StaffPage() {
     setShowDetailModal(true);
   };
 
+  // Revert Salary Payment
+  const handleRevertSalaryPayment = async (paymentId, amount, monthName, year) => {
+    if (!historyStaff) return;
+    if (!window.confirm(`Are you sure you want to revert the salary payment of ₹${amount} for ${monthName} ${year}? This will also delete the corresponding Expense record.`)) {
+      return;
+    }
+    try {
+      const res = await api.del(`/api/staff/${historyStaff.id}/payments/${paymentId}`);
+      if (res.success) {
+        toast.success(res.message || 'Salary payout reverted and removed from Expense!');
+        setShowHistoryModal(false);
+        fetchStaff();
+      } else {
+        toast.error(res.message || 'Failed to revert salary payment');
+      }
+    } catch (err) {
+      toast.error(err.message || 'Failed to revert salary payout');
+    }
+  };
+
   // Export Staff to PDF
   const handleExportPdf = () => {
     const columns = ['Staff Name', 'Category / Role', 'Phone', 'Salary (₹)', 'Status', 'Pending Months', 'Pending Total (₹)'];
     const rows = staffList.map(s => [
       s.name,
       s.category,
-      s.phone,
+      s.phone || '-',
       '₹' + Number(s.salary).toLocaleString('en-IN'),
       s.status,
       s.pendingMonthsCount > 0 ? `${s.pendingMonthsCount} Mo (${s.pendingMonthsNames || ''})` : 'Clear',
@@ -220,8 +241,8 @@ export default function StaffPage() {
     const totalPending = staffList.reduce((acc, s) => acc + (s.totalPendingSalary || 0), 0);
 
     exportToPdf({
-      title: 'JAMIA AN-NOOR - Staff & Payroll Roster',
-      subtitle: `Total Staff: ${staffList.length}`,
+      title: 'Masjid al noor - Staff & Payroll Roster',
+      subtitle: `sirajul huda sangam chulliyode • Total Staff: ${staffList.length}`,
       dateRange: 'Active Payroll',
       columns,
       rows,
@@ -229,7 +250,7 @@ export default function StaffPage() {
         { label: 'Monthly Active Commitment:', value: '₹' + Number(totalSalary).toLocaleString('en-IN') },
         { label: 'Total Pending Salaries:', value: '₹' + Number(totalPending).toLocaleString('en-IN'), bold: true, highlight: true }
       ],
-      fileName: 'Jamia_AnNoor_Staff_Payroll.pdf'
+      fileName: 'Masjid_Al_Noor_Staff_Payroll.pdf'
     });
   };
 
@@ -648,8 +669,8 @@ export default function StaffPage() {
 
       {/* Salary Payout Modal (Connected to Expense) */}
       {showPayoutModal && payoutStaff && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-md w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
@@ -804,9 +825,9 @@ export default function StaffPage() {
 
       {/* Salary History Modal */}
       {showHistoryModal && historyStaff && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full p-6 border border-slate-200 dark:border-slate-800 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0 flex flex-col max-h-[88vh]">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
                   Salary Disbursement History
@@ -821,7 +842,7 @@ export default function StaffPage() {
               </button>
             </div>
 
-            <div className="py-4 divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="py-4 divide-y divide-slate-100 dark:divide-slate-800 overflow-y-auto flex-1">
               {(!historyStaff.payments || historyStaff.payments.length === 0) ? (
                 <p className="text-xs text-slate-400 text-center py-6">No previous salary disbursements recorded yet.</p>
               ) : (
@@ -841,8 +862,18 @@ export default function StaffPage() {
                         </div>
                       )}
                     </div>
-                    <div className="text-right font-bold text-rose-600 dark:text-rose-400 text-sm">
-                      ₹{p.amount}
+                    <div className="flex items-center gap-2">
+                      <div className="text-right font-bold text-rose-600 dark:text-rose-400 text-sm">
+                        ₹{p.amount}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRevertSalaryPayment(p.id, p.amount, MONTH_NAMES[p.month - 1], p.year)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                        title="Revert / Delete this Salary Payout"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 ))
@@ -854,8 +885,8 @@ export default function StaffPage() {
 
       {/* Staff Details Modal (for Mobile Users) */}
       {showDetailModal && detailStaff && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-sm w-full p-6 border border-slate-200 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-sm w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <UserCheck className="w-4 h-4 text-emerald-600" />
@@ -926,8 +957,8 @@ export default function StaffPage() {
 
       {/* Add / Edit Staff Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-auto sm:my-8 p-5 sm:p-6 border border-slate-200 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 {editingStaff ? 'Edit Staff Member' : 'Register New Staff'}
@@ -958,11 +989,10 @@ export default function StaffPage() {
 
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Phone Number <span className="text-rose-500">*</span>
+                    Phone Number
                   </label>
                   <input
                     type="tel"
-                    required
                     placeholder="e.g. 9876543210"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}

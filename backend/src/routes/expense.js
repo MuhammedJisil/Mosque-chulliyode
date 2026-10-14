@@ -113,7 +113,9 @@ router.post('/', authMiddleware, async (req, res) => {
       description,
       customFields,
       proofImage,
-      date
+      date,
+      staffPaymentId,
+      staffId
     } = req.body;
 
     if (!purpose || !paidTo || !category || amount === undefined || !paymentMode) {
@@ -145,6 +147,8 @@ router.post('/', authMiddleware, async (req, res) => {
         description: description || '',
         customFields: customFields ? JSON.stringify(customFields) : null,
         proofImage: finalProofImage,
+        staffPaymentId: staffPaymentId ? parseInt(staffPaymentId) : null,
+        staffId: staffId ? parseInt(staffId) : null,
         date: date ? new Date(date) : new Date(),
       }
     });

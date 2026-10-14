@@ -69,4 +69,8 @@ export const api = {
       method: 'DELETE',
     });
   },
+
+  delete(endpoint) {
+    return this.del(endpoint);
+  },
 };

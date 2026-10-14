@@ -9,18 +9,36 @@ const { isConfigured, uploadToCloudinary } = require('../utils/cloudinary');
 // Get all Income records with filters
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { search, category, paymentMode, month, year, startDate, endDate, sort = 'newest' } = req.query;
+    const { search, category, paymentMode, month, year, startDate, endDate, sort = 'newest', isMemberPayment, source } = req.query;
 
     const where = {};
 
+    if (isMemberPayment === 'true' || source === 'members') {
+      where.OR = [
+        { category: 'Member Monthly Payment' },
+        { memberPaymentId: { not: null } },
+        { description: { contains: 'Monthly subscription' } },
+        { description: { contains: 'RCP-' } },
+      ];
+    }
+
     if (search && search.trim() !== '') {
       const q = search.trim();
-      where.OR = [
+      const searchConditions = [
         { donorName: { contains: q } },
         { donorPhone: { contains: q } },
         { donorAddress: { contains: q } },
         { description: { contains: q } },
       ];
+      if (where.OR) {
+        where.AND = [
+          { OR: where.OR },
+          { OR: searchConditions }
+        ];
+        delete where.OR;
+      } else {
+        where.OR = searchConditions;
+      }
     }
 
     if (category && category !== 'All') {
@@ -115,7 +133,9 @@ router.post('/', authMiddleware, async (req, res) => {
       description,
       customFields,
       proofImage,
-      date
+      date,
+      memberPaymentId,
+      memberId
     } = req.body;
 
     if (!donorName || !category || amount === undefined || !paymentMode) {
@@ -148,6 +168,8 @@ router.post('/', authMiddleware, async (req, res) => {
         description: description || '',
         customFields: customFields ? JSON.stringify(customFields) : null,
         proofImage: finalProofImage,
+        memberPaymentId: memberPaymentId ? parseInt(memberPaymentId) : null,
+        memberId: memberId ? parseInt(memberId) : null,
         date: date ? new Date(date) : new Date(),
       }
     });

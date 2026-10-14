@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../utils/api';
 import { openWhatsAppDueReminder } from '../utils/whatsapp';
 import { exportToPdf } from '../utils/exportPdf';
@@ -27,7 +28,8 @@ import {
   Info,
   ChevronRight,
   ShieldCheck,
-  Eye
+  Eye,
+  RotateCcw
 } from 'lucide-react';
 
 export default function MembersPage() {
@@ -67,10 +69,12 @@ export default function MembersPage() {
   };
   const [formData, setFormData] = useState(initialForm);
   const [submitting, setSubmitting] = useState(false);
+  const [submittingPayment, setSubmittingPayment] = useState(false);
 
   // Payment Form State
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
+  const [selectedPaymentMonths, setSelectedPaymentMonths] = useState([]);
   const [paymentForm, setPaymentForm] = useState({
     month: currentMonth,
     year: currentYear,
@@ -183,41 +187,171 @@ export default function MembersPage() {
     }
 
     setActivePayingMember(m);
-    const targetMonth = m.nextDueMonth ? m.nextDueMonth.month : currentMonth;
-    const targetYear = m.nextDueMonth ? m.nextDueMonth.year : currentYear;
-    const targetLabel = m.nextDueMonth ? m.nextDueMonth.label : `${MONTH_NAMES[targetMonth - 1]} ${targetYear}`;
+    const initialDue = m.dueMonths && m.dueMonths.length > 0 ? [m.dueMonths[0]] : [];
+    setSelectedPaymentMonths(initialDue);
+
+    const initialMonthsCount = initialDue.length;
+    const initialMembership = initialMonthsCount * (m.monthlyDonation || 100);
+    const initialMadrasa = initialMonthsCount * (m.hasMadrasa ? (m.madrasaMonthlyFee || 0) : 0);
 
     setPaymentForm({
-      month: targetMonth,
-      year: targetYear,
-      membershipAmount: m.nextDueMonth ? (m.monthlyDonation || 100) : 0,
-      madrasaAmount: m.nextDueMonth && m.hasMadrasa ? (m.madrasaMonthlyFee || 0) : 0,
+      month: initialDue[0] ? initialDue[0].month : currentMonth,
+      year: initialDue[0] ? initialDue[0].year : currentYear,
+      membershipAmount: initialMembership,
+      madrasaAmount: initialMadrasa,
       openingBalanceAmount: 0,
       paymentMode: 'Cash in Hand',
-      notes: m.nextDueMonth ? `Subscription paid for ${targetLabel}` : `Past arrears/opening balance payment`,
+      notes: initialDue[0] ? `Subscription paid for ${initialDue[0].label}` : `Opening balance payment`,
     });
     setShowPaymentModal(true);
   };
 
-  const handleSelectPendingMonth = (due) => {
+  // Toggle selection of pending due months
+  const handleToggleDueMonth = (due) => {
+    if (!activePayingMember) return;
+    const isSelected = selectedPaymentMonths.some(d => d.month === due.month && d.year === due.year);
+    let nextSelected;
+    if (isSelected) {
+      nextSelected = selectedPaymentMonths.filter(d => !(d.month === due.month && d.year === due.year));
+    } else {
+      nextSelected = [...selectedPaymentMonths, due];
+    }
+    setSelectedPaymentMonths(nextSelected);
+
+    // Automatically recalculate amounts!
+    const count = nextSelected.length;
+    const rate = activePayingMember.monthlyDonation || 100;
+    const newMembership = count * rate;
+    const newMadrasa = count * (activePayingMember.hasMadrasa ? (activePayingMember.madrasaMonthlyFee || 0) : 0);
+
+    const labels = nextSelected.map(d => d.label).join(', ');
     setPaymentForm(prev => ({
       ...prev,
-      month: due.month,
-      year: due.year,
-      notes: `Subscription paid for ${due.label}`,
+      membershipAmount: newMembership,
+      madrasaAmount: newMadrasa,
+      month: nextSelected[0] ? nextSelected[0].month : prev.month,
+      year: nextSelected[0] ? nextSelected[0].year : prev.year,
+      notes: count > 0 ? `Subscription paid for ${labels}` : prev.notes,
     }));
+  };
+
+  // Bidirectional: When user edits membership amount (e.g. types 200, 300)
+  const handleMembershipAmountChange = (val) => {
+    const amount = parseFloat(val) || 0;
+    if (!activePayingMember) {
+      setPaymentForm(prev => ({ ...prev, membershipAmount: val }));
+      return;
+    }
+
+    const rate = activePayingMember.monthlyDonation || 100;
+    const calculatedCount = Math.floor(amount / rate);
+
+    if (activePayingMember.dueMonths && activePayingMember.dueMonths.length > 0 && calculatedCount > 0) {
+      const selected = activePayingMember.dueMonths.slice(0, calculatedCount);
+      setSelectedPaymentMonths(selected);
+      const newMadrasa = selected.length * (activePayingMember.hasMadrasa ? (activePayingMember.madrasaMonthlyFee || 0) : 0);
+      const labels = selected.map(d => d.label).join(', ');
+
+      setPaymentForm(prev => ({
+        ...prev,
+        membershipAmount: val,
+        madrasaAmount: newMadrasa,
+        month: selected[0] ? selected[0].month : prev.month,
+        year: selected[0] ? selected[0].year : prev.year,
+        notes: `Subscription paid for ${labels}`,
+      }));
+    } else {
+      setPaymentForm(prev => ({ ...prev, membershipAmount: val }));
+    }
   };
 
   const handleRecordPayment = async (e) => {
     e.preventDefault();
-    if (!activePayingMember) return;
+    if (!activePayingMember || submittingPayment) return;
+    setSubmittingPayment(true);
     try {
-      await api.post(`/api/members/${activePayingMember.id}/payments`, paymentForm);
+      const payload = {
+        ...paymentForm,
+        months: selectedPaymentMonths.map(d => ({ month: d.month, year: d.year }))
+      };
+      await api.post(`/api/members/${activePayingMember.id}/payments`, payload);
       setShowPaymentModal(false);
       toast.success(`Payment recorded for ${activePayingMember.name} and logged in Income!`);
       fetchMembers();
     } catch (err) {
       toast.error(err.message || 'Failed to record payment');
+    } finally {
+      setSubmittingPayment(false);
+    }
+  };
+
+  // Group historyMember.payments by receiptNo (for multi-month batches) or single ID
+  const groupedHistoryPayments = useMemo(() => {
+    if (!historyMember || !historyMember.payments || historyMember.payments.length === 0) return [];
+
+    const groups = new Map();
+    // Sort descending by paymentDate or id
+    const sorted = [...historyMember.payments].sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate) || b.id - a.id);
+
+    for (const p of sorted) {
+      const key = p.receiptNo ? `rcp_${p.receiptNo}` : `single_${p.id}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          id: p.id,
+          receiptNo: p.receiptNo,
+          paymentDate: p.paymentDate,
+          paymentMode: p.paymentMode,
+          notes: p.notes,
+          totalAmount: 0,
+          membershipAmount: 0,
+          madrasaAmount: 0,
+          openingBalanceAmount: 0,
+          items: [],
+        });
+      }
+      const group = groups.get(key);
+      group.totalAmount += Number(p.totalAmount || 0);
+      group.membershipAmount += Number(p.membershipAmount || 0);
+      group.madrasaAmount += Number(p.madrasaAmount || 0);
+      group.openingBalanceAmount += Number(p.openingBalanceAmount || 0);
+      group.items.push(p);
+    }
+
+    return Array.from(groups.values()).map(g => {
+      const monthItems = g.items.filter(item => item.month > 0).sort((a, b) => (a.year - b.year) || (a.month - b.month));
+      let label = '';
+      if (monthItems.length > 1) {
+        const monthNames = monthItems.map(m => `${MONTH_NAMES[m.month - 1]} ${m.year}`);
+        label = `${monthItems.length} Months (${monthNames.join(', ')})`;
+      } else if (monthItems.length === 1) {
+        label = `${MONTH_NAMES[monthItems[0].month - 1]} ${monthItems[0].year}`;
+      } else {
+        label = `Opening Balance / Fee Payment`;
+      }
+      return {
+        ...g,
+        label,
+      };
+    });
+  }, [historyMember]);
+
+  // Revert / Delete Member Payment (supports single or multi-month batch)
+  const handleRevertPayment = async (paymentId, amount, label) => {
+    if (!historyMember) return;
+    if (!window.confirm(`Are you sure you want to revert payment of ₹${amount} for ${label}? This will also delete the corresponding Income entry.`)) {
+      return;
+    }
+    try {
+      const res = await api.delete(`/api/members/${historyMember.id}/payments/${paymentId}`);
+      if (res.success) {
+        toast.success(res.message || 'Payment reverted and removed from Income!');
+        setShowHistoryModal(false);
+        fetchMembers();
+      } else {
+        toast.error(res.message || 'Failed to revert payment');
+      }
+    } catch (err) {
+      toast.error(err.message || 'Failed to revert payment');
     }
   };
 
@@ -235,29 +369,32 @@ export default function MembersPage() {
 
   // Export Members List to PDF
   const handleExportPdf = () => {
-    const columns = ['Name', 'Phone', 'Monthly Fee', 'Madrasa Fee', 'Status', 'Due Months', 'Total Due (₹)'];
+    const columns = ['Name', 'Phone', 'Monthly Fee', 'Madrasa Fee', 'Opening Balance', 'Status', 'Due Months', 'Total Due (₹)'];
     const rows = members.map(m => [
       m.name,
-      m.phone,
+      m.phone || '-',
       '₹' + m.monthlyDonation,
       m.hasMadrasa ? `₹${m.madrasaMonthlyFee} (${m.madrasaChildrenCount} kid)` : '-',
+      `₹${m.openingBalance || 0}${m.netOpeningBalanceDue > 0 ? ` (Due: ₹${m.netOpeningBalanceDue})` : ' (Clear)'}`,
       m.status,
       m.dueMonthsCount > 0 ? `${m.dueMonthsCount} Mo (${m.dueMonthsNames || ''})` : 'Clear',
       '₹' + Number(m.totalDueAmount || 0).toLocaleString('en-IN'),
     ]);
 
     const totalDues = members.reduce((acc, m) => acc + (m.totalDueAmount || 0), 0);
+    const totalOpeningBalDue = members.reduce((acc, m) => acc + (m.netOpeningBalanceDue || 0), 0);
 
     exportToPdf({
-      title: 'JAMIA AN-NOOR - Member Subscriptions & Due Report',
-      subtitle: `Total Members: ${members.length}`,
+      title: 'Masjid al noor - Member Subscriptions & Due Report',
+      subtitle: `sirajul huda sangam chulliyode • Total Members: ${members.length}`,
       dateRange: 'Current Status',
       columns,
       rows,
       summaryRows: [
+        { label: 'Total Opening Balance Due:', value: '₹' + Number(totalOpeningBalDue).toLocaleString('en-IN') },
         { label: 'Total Outstanding Dues:', value: '₹' + Number(totalDues).toLocaleString('en-IN'), bold: true, highlight: true }
       ],
-      fileName: 'Jamia_AnNoor_Members_Due_Report.pdf'
+      fileName: 'Masjid_Al_Noor_Members_Due_Report.pdf'
     });
   };
 
@@ -507,7 +644,7 @@ export default function MembersPage() {
                   </div>
                   {(m.openingBalance || 0) > 0 && (
                     <div className="col-span-2">
-                      <span className="text-[10px] uppercase text-slate-400 block font-semibold">Past Arrears (Opening Balance)</span>
+                      <span className="text-[10px] uppercase text-slate-400 block font-semibold">Opening Balance</span>
                       <span className="font-bold text-orange-600 dark:text-orange-400">
                         ₹{m.openingBalance} total
                         {(m.netOpeningBalanceDue || 0) > 0
@@ -532,10 +669,15 @@ export default function MembersPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>All Subscriptions Paid (Up to date)</span>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenHistory(m)}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+                      title="All subscriptions paid - Click to view history or revert payment"
+                    >
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      <span>All Paid <span className="underline font-normal text-[11px]">(History / Revert)</span></span>
+                    </button>
                   )}
 
                   <button
@@ -659,7 +801,7 @@ export default function MembersPage() {
                         )}
                         {(m.netOpeningBalanceDue || 0) > 0 && (
                           <div className="mt-1 text-[11px] font-semibold text-orange-600 dark:text-orange-400">
-                            + Arrears due: ₹{Number(m.netOpeningBalanceDue).toLocaleString('en-IN')}
+                            + Opening Balance due: ₹{Number(m.netOpeningBalanceDue).toLocaleString('en-IN')}
                           </div>
                         )}
                         {hasDues && (
@@ -686,31 +828,29 @@ export default function MembersPage() {
                         </button>
                       </td>
 
-                      {/* Record Payment Button (Disabled if already up to date) */}
+                      {/* Record Payment Button (or View History / Revert if Paid) */}
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenPayment(m)}
-                          disabled={!hasDues}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
-                            hasDues
-                              ? 'border border-emerald-300 dark:border-emerald-700/80 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60'
-                          }`}
-                          title={hasDues ? 'Record Payment' : 'Member is already up to date'}
-                        >
-                          {hasDues ? (
-                            <>
-                              <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Pay</span>
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Paid</span>
-                            </>
-                          )}
-                        </button>
+                        {hasDues ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPayment(m)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-emerald-300 dark:border-emerald-700/80 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors"
+                            title="Record Payment"
+                          >
+                            <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Pay</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenHistory(m)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shadow-xs"
+                            title="All subscriptions paid! Click to view history or revert accidental payment"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Paid <span className="text-[10px] opacity-80 font-normal underline">(Revert)</span></span>
+                          </button>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
@@ -725,7 +865,7 @@ export default function MembersPage() {
                           <button
                             onClick={() => handleOpenHistory(m)}
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors"
-                            title="View Payment History"
+                            title="View Payment History & Revert"
                           >
                             <History className="w-3.5 h-3.5" />
                           </button>
@@ -766,15 +906,15 @@ export default function MembersPage() {
       {/* ======================================================== */}
 
       {/* Record Monthly Payment Modal */}
-      {showPaymentModal && activePayingMember && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-md w-full p-5 sm:p-6 border border-slate-200 dark:border-slate-800 my-auto sm:my-8">
+      {showPaymentModal && activePayingMember && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-md w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
                   Record Monthly Payment
                 </h3>
-                <p className="text-xs text-emerald-600 font-semibold">{activePayingMember.name}</p>
+                <p className="text-xs text-emerald-600 font-semibold">{activePayingMember.name} • ₹{activePayingMember.monthlyDonation || 100}/mo</p>
               </div>
               <button
                 onClick={() => setShowPaymentModal(false)}
@@ -785,82 +925,47 @@ export default function MembersPage() {
             </div>
 
             <form onSubmit={handleRecordPayment} className="py-4 space-y-4">
-              {/* Pending Months Chips Selector */}
+              {/* Multi-Month Due Selector */}
               {activePayingMember.dueMonths && activePayingMember.dueMonths.length > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1.5">
-                    Click to Pay Specific Due Month:
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
+                <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100 dark:border-emerald-900/40">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold uppercase text-emerald-800 dark:text-emerald-300">
+                      Select Months to Pay:
+                    </label>
+                    <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                      {selectedPaymentMonths.length} month(s) selected
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1">
                     {activePayingMember.dueMonths.map((due, idx) => {
-                      const isSelected = paymentForm.month === due.month && paymentForm.year === due.year;
+                      const isSelected = selectedPaymentMonths.some(d => d.month === due.month && d.year === due.year);
                       return (
                         <button
                           key={idx}
                           type="button"
-                          onClick={() => handleSelectPendingMonth(due)}
-                          className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-all ${
+                          onClick={() => handleToggleDueMonth(due)}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all flex items-center gap-1.5 ${
                             isSelected
                               ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                              : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900 hover:bg-rose-100'
+                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
                           }`}
                         >
-                          {due.label} {isSelected && '✓'}
+                          <input
+                            type="checkbox"
+                            readOnly
+                            checked={isSelected}
+                            className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-0 pointer-events-none"
+                          />
+                          {due.label}
                         </button>
                       );
                     })}
                   </div>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
+                    💡 Select multiple months, or enter amount below — both calculate months and fee automatically!
+                  </p>
                 </div>
               )}
-
-              {/* Month & Year Selectors */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Month
-                  </label>
-                  <select
-                    value={paymentForm.month}
-                    onChange={(e) => {
-                      const m = parseInt(e.target.value);
-                      const mName = MONTH_NAMES[m - 1];
-                      setPaymentForm({
-                        ...paymentForm,
-                        month: m,
-                        notes: `Subscription paid for ${mName} ${paymentForm.year}`
-                      });
-                    }}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    {MONTH_NAMES.map((name, i) => (
-                      <option key={i} value={i + 1}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Year
-                  </label>
-                  <select
-                    value={paymentForm.year}
-                    onChange={(e) => {
-                      const y = parseInt(e.target.value);
-                      const mName = MONTH_NAMES[paymentForm.month - 1];
-                      setPaymentForm({
-                        ...paymentForm,
-                        year: y,
-                        notes: `Subscription paid for ${mName} ${y}`
-                      });
-                    }}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    {[currentYear + 1, currentYear, currentYear - 1, currentYear - 2].map((y) => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
 
               {/* Amounts */}
               <div className="grid grid-cols-2 gap-3">
@@ -873,9 +978,14 @@ export default function MembersPage() {
                     min="0"
                     required
                     value={paymentForm.membershipAmount}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, membershipAmount: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => handleMembershipAmountChange(e.target.value)}
                     className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
+                  {selectedPaymentMonths.length > 0 && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                      Paying for {selectedPaymentMonths.length} month(s)
+                    </span>
+                  )}
                 </div>
 
                 <div>
@@ -889,17 +999,22 @@ export default function MembersPage() {
                     onChange={(e) => setPaymentForm({ ...paymentForm, madrasaAmount: parseFloat(e.target.value) || 0 })}
                     className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
+                  {activePayingMember.hasMadrasa && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 block">
+                      {activePayingMember.madrasaChildrenCount} kid(s) in madrasa
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {/* Opening Balance Arrears Payment */}
+              {/* Opening Balance Payment */}
               {(activePayingMember.netOpeningBalanceDue || 0) > 0 && (
                 <div className="p-3 bg-orange-50 dark:bg-orange-950/30 rounded-xl border border-orange-200 dark:border-orange-800/60">
                   <div className="text-xs font-bold text-orange-800 dark:text-orange-300 mb-1.5">
-                    Past Arrears / Opening Balance Due: ₹{Number(activePayingMember.netOpeningBalanceDue).toLocaleString('en-IN')}
+                    Opening Balance Due: ₹{Number(activePayingMember.netOpeningBalanceDue).toLocaleString('en-IN')}
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="text-xs text-slate-600 dark:text-slate-400 font-medium whitespace-nowrap">Pay Arrears (\u20b9):</label>
+                    <label className="text-xs text-slate-600 dark:text-slate-400 font-medium whitespace-nowrap">Pay Opening Balance (₹):</label>
                     <input
                       type="number"
                       min="0"
@@ -917,7 +1032,7 @@ export default function MembersPage() {
               <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
                 <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Total Collection:</span>
                 <span className="text-base font-bold text-emerald-700 dark:text-emerald-300">
-                  ₹{parseFloat(paymentForm.membershipAmount || 0) + parseFloat(paymentForm.madrasaAmount || 0)}
+                  ₹{(parseFloat(paymentForm.membershipAmount || 0) + parseFloat(paymentForm.madrasaAmount || 0) + parseFloat(paymentForm.openingBalanceAmount || 0)).toLocaleString('en-IN')}
                 </span>
               </div>
 
@@ -960,21 +1075,23 @@ export default function MembersPage() {
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md transition-all"
+                  disabled={submittingPayment}
+                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl shadow-md transition-all"
                 >
                   <Check className="w-4 h-4" />
-                  Confirm & Sync to Income
+                  {submittingPayment ? 'Recording...' : 'Confirm & Sync to Income'}
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Member Details & Monthly Subscription Tracker Modal */}
-      {showDetailModal && detailMember && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-xl w-full p-5 sm:p-6 border border-slate-200 dark:border-slate-800 my-auto sm:my-8">
+      {showDetailModal && detailMember && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-xl w-full p-5 sm:p-6 border border-slate-200 dark:border-slate-800 my-6 sm:my-10 shrink-0 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-emerald-600" />
@@ -1008,7 +1125,7 @@ export default function MembersPage() {
                     </span>
                   </div>
                   <div className="text-slate-600 dark:text-slate-300 mt-1 flex flex-wrap items-center gap-3">
-                    <span>📞 {detailMember.phone}</span>
+                    <span>📞 {detailMember.phone || 'No phone recorded'}</span>
                     {detailMember.address && <span>📍 {detailMember.address}</span>}
                   </div>
                   <div className="text-[11px] text-slate-400 mt-1">
@@ -1017,15 +1134,27 @@ export default function MembersPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openWhatsAppDueReminder(detailMember)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-semibold text-xs hover:bg-emerald-700 shadow-sm"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                    WhatsApp
-                  </button>
+                  {detailMember.phone && (
+                    <button
+                      type="button"
+                      onClick={() => openWhatsAppDueReminder(detailMember)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-semibold text-xs hover:bg-emerald-700 shadow-sm"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      WhatsApp
+                    </button>
+                  )}
                 </div>
+              </div>
+
+              {/* Remarks / Notes added when creating member */}
+              <div className="p-3.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/50">
+                <span className="text-[10px] uppercase font-bold text-amber-800 dark:text-amber-400 block mb-1">
+                  Registration Remarks / Notes
+                </span>
+                <p className="text-xs text-slate-700 dark:text-slate-300 font-medium whitespace-pre-wrap">
+                  {detailMember.notes?.trim() ? detailMember.notes : 'No remarks recorded during registration.'}
+                </p>
               </div>
 
               {/* Financial Quick Breakdown */}
@@ -1043,7 +1172,7 @@ export default function MembersPage() {
                   {detailMember.hasMadrasa && <span className="text-[10px] text-slate-400 block">{detailMember.madrasaChildrenCount} children</span>}
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80">
-                  <span className="text-[10px] uppercase text-slate-400 block font-semibold">Past Arrears</span>
+                  <span className="text-[10px] uppercase text-slate-400 block font-semibold">Opening Balance</span>
                   <span className="font-bold text-orange-600 dark:text-orange-400 text-sm">
                     ₹{detailMember.netOpeningBalanceDue || 0}
                   </span>
@@ -1133,12 +1262,6 @@ export default function MembersPage() {
                   })}
                 </div>
               </div>
-
-              {detailMember.notes && (
-                <div className="text-[11px] text-slate-500 italic p-2.5 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-100 dark:border-slate-800">
-                  <strong>Notes:</strong> {detailMember.notes}
-                </div>
-              )}
             </div>
 
             <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
@@ -1148,10 +1271,10 @@ export default function MembersPage() {
                   setShowDetailModal(false);
                   handleOpenHistory(detailMember);
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800 rounded-xl transition-colors shadow-xs"
               >
-                <History className="w-3.5 h-3.5" />
-                View Full History
+                <History className="w-4 h-4" />
+                <span>Payment History & Revert</span>
               </button>
 
               <div className="flex items-center gap-2">
@@ -1178,19 +1301,20 @@ export default function MembersPage() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Payment History Modal */}
-      {showHistoryModal && historyMember && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full p-5 sm:p-6 border border-slate-200 dark:border-slate-800 my-auto sm:my-8 max-h-[88vh] flex flex-col">
+      {/* Payment History & Revert Modal */}
+      {showHistoryModal && historyMember && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full p-5 sm:p-6 border border-slate-200 dark:border-slate-800 my-6 sm:my-10 shrink-0 max-h-[88vh] flex flex-col">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Payment History
+                  Payment History & Revert
                 </h3>
-                <p className="text-xs text-slate-500">{historyMember.name} • {historyMember.phone}</p>
+                <p className="text-xs text-slate-500">{historyMember.name} • {historyMember.phone || 'No phone'}</p>
               </div>
               <button
                 onClick={() => setShowHistoryModal(false)}
@@ -1200,48 +1324,65 @@ export default function MembersPage() {
               </button>
             </div>
 
-            <div className="py-4 divide-y divide-slate-100 dark:divide-slate-800 overflow-y-auto flex-1">
-              {(!historyMember.payments || historyMember.payments.length === 0) ? (
+            <div className="py-4 overflow-y-auto flex-1 space-y-2.5">
+              {groupedHistoryPayments.length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-6">No previous payments recorded for this member.</p>
               ) : (
-                historyMember.payments.map((p) => (
-                  <div key={p.id} className="py-3 flex items-center justify-between text-xs">
-                    <div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200">
-                        {MONTH_NAMES[p.month - 1]} {p.year}
+                groupedHistoryPayments.map((g) => (
+                  <div key={g.id} className="p-3.5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3 text-xs transition-all hover:border-slate-300 dark:hover:border-slate-700">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-slate-800 dark:text-slate-100 flex flex-wrap items-center gap-1.5">
+                        <span className="truncate">{g.label}</span>
+                        {g.items.length > 1 && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 whitespace-nowrap">
+                            {g.items.length} Months Batch
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[11px] text-slate-400">
-                        {p.paymentMode} • {new Date(p.paymentDate).toLocaleDateString('en-GB')}
-                        {p.receiptNo && ` • ${p.receiptNo}`}
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        {g.paymentMode} • {new Date(g.paymentDate).toLocaleDateString('en-GB')}
+                        {g.receiptNo && <span className="ml-1.5 font-mono text-[10px] text-slate-400">({g.receiptNo})</span>}
                       </div>
-                      {p.notes && (
-                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 italic mt-0.5">
-                          Remarks: {p.notes}
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {g.membershipAmount > 0 && `Sub: ₹${g.membershipAmount} `}
+                        {g.madrasaAmount > 0 && `• Madrasa: ₹${g.madrasaAmount} `}
+                        {g.openingBalanceAmount > 0 && `• Opening Bal: ₹${g.openingBalanceAmount}`}
+                      </div>
+                      {g.notes && (
+                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 italic mt-0.5 truncate">
+                          Remarks: {g.notes}
                         </div>
                       )}
                     </div>
-                    <div className="text-right">
-                      <div className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">
-                        ₹{p.totalAmount}
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        <div className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                          ₹{g.totalAmount.toLocaleString('en-IN')}
+                        </div>
                       </div>
-                      <div className="text-[10px] text-slate-400">
-                        {p.month > 0 && p.membershipAmount > 0 && `Sub: ₹${p.membershipAmount} `}
-                        {p.madrasaAmount > 0 && `Madrasa: ₹${p.madrasaAmount} `}
-                        {p.openingBalanceAmount > 0 && `Arrears: ₹${p.openingBalanceAmount}`}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRevertPayment(g.id, g.totalAmount, g.label)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-rose-600 hover:text-white hover:bg-rose-600 dark:text-rose-400 dark:hover:text-white dark:hover:bg-rose-600 rounded-xl transition-all border border-rose-200 dark:border-rose-900/40 text-xs font-bold shadow-xs active:scale-95"
+                        title="Revert Payment (removes linked Income)"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Revert</span>
+                      </button>
                     </div>
                   </div>
                 ))
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Add / Edit Member Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-auto sm:my-8 p-5 sm:p-6 border border-slate-200 dark:border-slate-800">
+      {showAddModal && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                 {editingMember ? 'Edit Member Details' : 'Register New Member'}
@@ -1272,11 +1413,10 @@ export default function MembersPage() {
 
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Phone (WhatsApp) <span className="text-rose-500">*</span>
+                    Phone (WhatsApp) <span className="text-[10px] font-normal lowercase text-slate-400">(optional)</span>
                   </label>
                   <input
                     type="tel"
-                    required
                     placeholder="e.g. 9845012345"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -1361,13 +1501,13 @@ export default function MembersPage() {
                 </div>
               </div>
 
-              {/* Opening Balance / Past Arrears */}
+              {/* Opening Balance */}
               <div className="p-3.5 rounded-xl bg-orange-50/60 dark:bg-orange-950/20 border border-orange-200/70 dark:border-orange-900/50">
                 <label className="block text-xs font-bold uppercase text-orange-800 dark:text-orange-300 mb-1">
-                  Opening Balance — Past Arrears (₹) <span className="text-[10px] font-normal normal-case text-slate-500">(Optional)</span>
+                  Opening Balance (₹) <span className="text-[10px] font-normal normal-case text-slate-500">(Optional)</span>
                 </label>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
-                  Enter any amount this member owed from before this software was used (from manual registers). This will be added to their total dues.
+                  Enter any initial unpaid balance this member had before starting with this software. This is tracked in their opening balance dues.
                 </p>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">₹</span>
@@ -1375,7 +1515,7 @@ export default function MembersPage() {
                     type="number"
                     min="0"
                     step="any"
-                    placeholder="e.g. 1200 (12 months x 100)"
+                    placeholder="e.g. 1200"
                     value={formData.openingBalance}
                     onChange={(e) => setFormData({ ...formData, openingBalance: parseFloat(e.target.value) || 0 })}
                     className="w-full pl-8 pr-3 py-2 text-sm font-semibold rounded-xl border border-orange-200 dark:border-orange-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-orange-400 focus:outline-none"
@@ -1459,7 +1599,8 @@ export default function MembersPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

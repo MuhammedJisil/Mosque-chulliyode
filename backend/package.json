@@ -4,8 +4,8 @@
   "description": "Backend API for Mosque Management System with Prisma and PostgreSQL / Supabase",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "start": "PORT=5001 node src/server.js",
+    "dev": "PORT=5001 node --watch src/server.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:seed": "node prisma/seed.js",

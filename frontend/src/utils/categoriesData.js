@@ -1,6 +1,7 @@
 // Default categories extracted from user reference images
 
 export const DEFAULT_INCOME_CATEGORIES = [
+  'Member Monthly Payment',
   'Donation',
   'Donation Box Collection',
   'Ramadan Collection',
