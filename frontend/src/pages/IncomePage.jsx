@@ -42,7 +42,7 @@ export default function IncomePage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [memberPaymentsOnly, setMemberPaymentsOnly] = useState(false);
-  const [sortOrder, setSortOrder] = useState('newest'); // 'newest' or 'oldest'
+  const [sortOrder, setSortOrder] = useState('oldest'); // 'oldest' or 'newest'
 
   // Custom Categories list from API
   const [customCategories, setCustomCategories] = useState([]);

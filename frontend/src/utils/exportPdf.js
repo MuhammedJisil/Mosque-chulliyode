@@ -143,3 +143,126 @@ export const exportToPdf = ({
 
   doc.save(fileName);
 };
+
+/**
+ * Dedicated Family Census / Survey PDF Export
+ * Exports member name, division, job, family members (adults, children), and family notes/ages.
+ */
+export const exportFamilySurveyPdf = ({
+  members = [],
+  division = 'All Divisions',
+  fileName = 'mahallu_family_survey_report.pdf'
+}) => {
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'pt',
+    format: 'a4'
+  });
+
+  const pageW = doc.internal.pageSize.width;
+
+  // Header banner
+  doc.setFillColor(5, 150, 105);
+  doc.rect(0, 0, pageW, 75, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(255, 255, 255);
+  doc.text('Masjid al noor', pageW / 2, 28, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(220, 252, 231);
+  doc.text('sirajul huda sangam chulliyode', pageW / 2, 45, { align: 'center' });
+
+  doc.setFontSize(11);
+  doc.setTextColor(236, 253, 245);
+  doc.text('MAHALLU MEMBERS & FAMILY CENSUS SURVEY REPORT', pageW / 2, 63, { align: 'center' });
+
+  // Metadata
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  const printDate = new Date().toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+  doc.text(`Generated On: ${printDate}`, 40, 95);
+  doc.text(`Division / Area: ${division}`, 40, 108);
+
+  const totalMembers = members.length;
+  const totalAdults = members.reduce((sum, m) => sum + (m.hasFamily ? (parseInt(m.adultsCount) || 0) : 0), 0);
+  const totalChildren = members.reduce((sum, m) => sum + (m.hasFamily ? (parseInt(m.childrenCount) || 0) : 0), 0);
+  const totalIndividuals = totalMembers + totalAdults + totalChildren;
+
+  doc.text(`Total Houses/Members: ${totalMembers}  |  Adults: ${totalAdults}  |  Children: ${totalChildren}  |  Total Population: ${totalIndividuals}`, pageW - 40, 95, { align: 'right' });
+
+  const columns = [
+    '#',
+    'ID No',
+    'Head of House / Member',
+    'Phone',
+    'Division / Area',
+    'Job / Profession',
+    'Adults',
+    'Children',
+    'Family Details & Ages'
+  ];
+
+  const rows = members.map((m, idx) => [
+    idx + 1,
+    m.idNumber || '-',
+    m.name || '-',
+    m.phone || '-',
+    m.division || '-',
+    m.job || '-',
+    m.hasFamily ? (m.adultsCount || 0) : '-',
+    m.hasFamily ? (m.childrenCount || 0) : '-',
+    m.familyDetails || (m.hasFamily ? 'Family registered' : 'Single Member')
+  ]);
+
+  const safeRows = rows.map(row =>
+    row.map(cell => (typeof cell === 'string' ? safe(cell) : cell))
+  );
+
+  doc.autoTable({
+    startY: 120,
+    head: [columns.map(c => safe(c))],
+    body: safeRows,
+    theme: 'grid',
+    headStyles: {
+      fillColor: [6, 78, 59],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8.5,
+      halign: 'left'
+    },
+    bodyStyles: {
+      fontSize: 8,
+      textColor: [30, 41, 59]
+    },
+    columnStyles: {
+      0: { cellWidth: 25 },
+      1: { cellWidth: 45 },
+      2: { cellWidth: 120 },
+      3: { cellWidth: 75 },
+      4: { cellWidth: 80 },
+      5: { cellWidth: 80 },
+      6: { cellWidth: 40, halign: 'center' },
+      7: { cellWidth: 45, halign: 'center' },
+      8: { cellWidth: 'auto' }
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252]
+    },
+    margin: { left: 30, right: 30 },
+    didDrawPage: () => {
+      const str = `Page ${doc.internal.getNumberOfPages()}`;
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text(str, pageW / 2, doc.internal.pageSize.height - 15, { align: 'center' });
+    }
+  });
+
+  doc.save(fileName);
+};
+

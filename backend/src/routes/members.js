@@ -14,9 +14,9 @@ function calculateMemberDue(member, payments) {
   let startYear = joinDate.getFullYear();
   let startMonth = joinDate.getMonth() + 1;
 
-  // For sane bounds, do not look back more than 2 years if joined long ago
-  if (startYear < currentYear - 1) {
-    startYear = currentYear - 1;
+  // Sanity check to avoid invalid negative or distant NaN dates
+  if (isNaN(startYear) || startYear < 1990) {
+    startYear = currentYear;
     startMonth = 1;
   }
 
@@ -77,7 +77,7 @@ function calculateMemberDue(member, payments) {
 // Get all Members with search, status filter, and due calculations
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { search, status } = req.query;
+    const { search, status, division } = req.query;
 
     const where = {};
     if (search && search.trim() !== '') {
@@ -86,11 +86,18 @@ router.get('/', authMiddleware, async (req, res) => {
         { name: { contains: q } },
         { phone: { contains: q } },
         { address: { contains: q } },
+        { idNumber: { contains: q } },
+        { division: { contains: q } },
+        { job: { contains: q } },
       ];
     }
 
     if (status && status !== 'All') {
       where.status = status;
+    }
+
+    if (division && division !== 'All') {
+      where.division = division;
     }
 
     const members = await prisma.member.findMany({
@@ -159,6 +166,13 @@ router.post('/', authMiddleware, async (req, res) => {
       name,
       address,
       phone,
+      job,
+      division,
+      idNumber,
+      hasFamily = false,
+      adultsCount = 0,
+      childrenCount = 0,
+      familyDetails,
       joiningDate,
       monthlyDonation = 100,
       openingBalance = 0,
@@ -178,6 +192,13 @@ router.post('/', authMiddleware, async (req, res) => {
         name,
         address: address || '',
         phone: phone ? String(phone).trim() : '',
+        job: job || '',
+        division: division || '',
+        idNumber: idNumber || '',
+        hasFamily: Boolean(hasFamily),
+        adultsCount: parseInt(adultsCount) || 0,
+        childrenCount: parseInt(childrenCount) || 0,
+        familyDetails: familyDetails || '',
         joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
         monthlyDonation: parseFloat(monthlyDonation) || 100,
         openingBalance: parseFloat(openingBalance) || 0,
@@ -207,6 +228,13 @@ router.put('/:id', authMiddleware, async (req, res) => {
       name,
       address,
       phone,
+      job,
+      division,
+      idNumber,
+      hasFamily,
+      adultsCount,
+      childrenCount,
+      familyDetails,
       joiningDate,
       monthlyDonation,
       openingBalance,
@@ -223,6 +251,13 @@ router.put('/:id', authMiddleware, async (req, res) => {
         name,
         address,
         phone: phone !== undefined ? String(phone).trim() : undefined,
+        job: job !== undefined ? job : undefined,
+        division: division !== undefined ? division : undefined,
+        idNumber: idNumber !== undefined ? idNumber : undefined,
+        hasFamily: hasFamily !== undefined ? Boolean(hasFamily) : undefined,
+        adultsCount: adultsCount !== undefined ? (parseInt(adultsCount) || 0) : undefined,
+        childrenCount: childrenCount !== undefined ? (parseInt(childrenCount) || 0) : undefined,
+        familyDetails: familyDetails !== undefined ? familyDetails : undefined,
         ...(joiningDate ? { joiningDate: new Date(joiningDate) } : {}),
         ...(monthlyDonation !== undefined ? { monthlyDonation: parseFloat(monthlyDonation) } : {}),
         ...(openingBalance !== undefined ? { openingBalance: parseFloat(openingBalance) } : {}),

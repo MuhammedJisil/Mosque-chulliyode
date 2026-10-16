@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../utils/api';
 import { openWhatsAppDueReminder } from '../utils/whatsapp';
-import { exportToPdf } from '../utils/exportPdf';
+import { exportToPdf, exportFamilySurveyPdf } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
 import Pagination from '../components/Pagination';
 import { PAYMENT_MODES, MONTH_NAMES } from '../utils/categoriesData';
@@ -29,7 +29,11 @@ import {
   ChevronRight,
   ShieldCheck,
   Eye,
-  RotateCcw
+  RotateCcw,
+  Briefcase,
+  Building,
+  Hash,
+  FileText
 } from 'lucide-react';
 
 export default function MembersPage() {
@@ -41,6 +45,7 @@ export default function MembersPage() {
   // Filters
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All'); // 'All', 'Active', 'Inactive', 'DueOnly'
+  const [divisionFilter, setDivisionFilter] = useState('All');
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -58,6 +63,13 @@ export default function MembersPage() {
     name: '',
     phone: '',
     address: '',
+    job: '',
+    division: '',
+    idNumber: '',
+    hasFamily: false,
+    adultsCount: 2,
+    childrenCount: 0,
+    familyDetails: '',
     joiningDate: new Date().toISOString().split('T')[0],
     monthlyDonation: 100,
     openingBalance: 0,
@@ -85,12 +97,17 @@ export default function MembersPage() {
     notes: '',
   });
 
+  // Advance Month Adder State in Payment Modal
+  const [customAdvanceMonth, setCustomAdvanceMonth] = useState(currentMonth);
+  const [customAdvanceYear, setCustomAdvanceYear] = useState(currentYear);
+
   const fetchMembers = async () => {
     try {
       setLoading(true);
       const res = await api.get('/api/members', {
         search,
         status: statusFilter !== 'All' && statusFilter !== 'DueOnly' ? statusFilter : undefined,
+        division: divisionFilter !== 'All' ? divisionFilter : undefined,
       });
       if (res.success) {
         let list = res.members || [];
@@ -108,7 +125,16 @@ export default function MembersPage() {
 
   useEffect(() => {
     fetchMembers();
-  }, [search, statusFilter]);
+  }, [search, statusFilter, divisionFilter]);
+
+  // Unique divisions for filter dropdown
+  const uniqueDivisions = useMemo(() => {
+    const set = new Set();
+    members.forEach(m => {
+      if (m.division && m.division.trim()) set.add(m.division.trim());
+    });
+    return Array.from(set).sort();
+  }, [members]);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -132,9 +158,16 @@ export default function MembersPage() {
   const handleOpenEdit = (m) => {
     setEditingMember(m);
     setFormData({
-      name: m.name,
-      phone: m.phone,
+      name: m.name || '',
+      phone: m.phone || '',
       address: m.address || '',
+      job: m.job || '',
+      division: m.division || '',
+      idNumber: m.idNumber || '',
+      hasFamily: Boolean(m.hasFamily),
+      adultsCount: m.adultsCount !== undefined ? m.adultsCount : 2,
+      childrenCount: m.childrenCount !== undefined ? m.childrenCount : 0,
+      familyDetails: m.familyDetails || '',
       joiningDate: m.joiningDate ? new Date(m.joiningDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       monthlyDonation: m.monthlyDonation || 100,
       openingBalance: m.openingBalance || 0,
@@ -178,18 +211,36 @@ export default function MembersPage() {
     }
   };
 
-  // Open Payment Modal (Auto-selects earliest unpaid month!)
+  // Open Payment Modal (Supports both past dues & future/advance payments)
   const handleOpenPayment = (m) => {
-    const hasDues = m.dueMonthsCount > 0 || (m.netOpeningBalanceDue || 0) > 0;
-    if (!hasDues) {
-      toast.info(`${m.name} is already completely up to date! All dues are cleared.`);
-      return;
+    setActivePayingMember(m);
+    let initialDue = [];
+    if (m.dueMonths && m.dueMonths.length > 0) {
+      initialDue = [m.dueMonths[0]];
+    } else {
+      // Find the next upcoming month after latest payment or current month
+      let nextM = currentMonth;
+      let nextY = currentYear;
+      if (m.payments && m.payments.length > 0) {
+        const sortedPayments = [...m.payments].filter(p => p.month > 0).sort((a, b) => (b.year - a.year) || (b.month - a.month));
+        if (sortedPayments.length > 0) {
+          const lastPaid = sortedPayments[0];
+          nextM = lastPaid.month + 1;
+          nextY = lastPaid.year;
+          if (nextM > 12) {
+            nextM = 1;
+            nextY++;
+          }
+        }
+      }
+      initialDue = [{
+        month: nextM,
+        year: nextY,
+        label: `${MONTH_NAMES[nextM - 1]} ${nextY} (Advance)`
+      }];
     }
 
-    setActivePayingMember(m);
-    const initialDue = m.dueMonths && m.dueMonths.length > 0 ? [m.dueMonths[0]] : [];
     setSelectedPaymentMonths(initialDue);
-
     const initialMonthsCount = initialDue.length;
     const initialMembership = initialMonthsCount * (m.monthlyDonation || 100);
     const initialMadrasa = initialMonthsCount * (m.hasMadrasa ? (m.madrasaMonthlyFee || 0) : 0);
@@ -203,7 +254,50 @@ export default function MembersPage() {
       paymentMode: 'Cash in Hand',
       notes: initialDue[0] ? `Subscription paid for ${initialDue[0].label}` : `Opening balance payment`,
     });
+    setCustomAdvanceMonth(initialDue[0] ? initialDue[0].month : currentMonth);
+    setCustomAdvanceYear(initialDue[0] ? initialDue[0].year : currentYear);
     setShowPaymentModal(true);
+  };
+
+  // Add a future / advance month to the payment batch
+  const handleAddCustomAdvanceMonth = () => {
+    if (!activePayingMember) return;
+    const mNum = parseInt(customAdvanceMonth);
+    const yNum = parseInt(customAdvanceYear);
+    const isAlreadySelected = selectedPaymentMonths.some(d => d.month === mNum && d.year === yNum);
+    if (isAlreadySelected) {
+      toast.info(`${MONTH_NAMES[mNum - 1]} ${yNum} is already selected.`);
+      return;
+    }
+    const alreadyPaid = (activePayingMember.payments || []).some(p => p.month === mNum && p.year === yNum);
+    if (alreadyPaid) {
+      toast.error(`${activePayingMember.name} has already paid for ${MONTH_NAMES[mNum - 1]} ${yNum}.`);
+      return;
+    }
+
+    const newMonthItem = {
+      month: mNum,
+      year: yNum,
+      label: `${MONTH_NAMES[mNum - 1]} ${yNum} (Advance)`
+    };
+
+    const nextSelected = [...selectedPaymentMonths, newMonthItem];
+    setSelectedPaymentMonths(nextSelected);
+
+    const count = nextSelected.length;
+    const rate = activePayingMember.monthlyDonation || 100;
+    const newMembership = count * rate;
+    const newMadrasa = count * (activePayingMember.hasMadrasa ? (activePayingMember.madrasaMonthlyFee || 0) : 0);
+    const labels = nextSelected.map(d => d.label).join(', ');
+
+    setPaymentForm(prev => ({
+      ...prev,
+      membershipAmount: newMembership,
+      madrasaAmount: newMadrasa,
+      notes: `Subscription paid for ${labels}`,
+    }));
+
+    toast.success(`Added ${MONTH_NAMES[mNum - 1]} ${yNum} to payment!`);
   };
 
   // Toggle selection of pending due months
@@ -423,6 +517,15 @@ export default function MembersPage() {
     });
   };
 
+  // Dedicated Mahallu Family Census & Survey PDF Export
+  const handleExportSurveyPdf = () => {
+    exportFamilySurveyPdf({
+      members,
+      division: divisionFilter !== 'All' ? divisionFilter : 'All Divisions / Areas',
+      fileName: `Mahallu_Family_Survey_${divisionFilter !== 'All' ? divisionFilter.replace(/\s+/g, '_') : 'All'}.pdf`
+    });
+  };
+
   const totalDuesAll = useMemo(() => members.reduce((acc, m) => acc + (m.totalDueAmount || 0), 0), [members]);
 
   // hasDues also accounts for opening balance arrears
@@ -440,12 +543,20 @@ export default function MembersPage() {
             </span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Monthly donation (₹100 default), madrasa fees, precise pending months due, and 1-click WhatsApp alerts
+            Monthly donation (₹100 default), madrasa fees, precise pending months due, family census & 1-click WhatsApp alerts
           </p>
         </div>
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleExportSurveyPdf}
+            className="p-2 sm:px-3 sm:py-2 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/40 shadow-xs flex items-center gap-1.5 transition-all"
+            title="Download Family Survey & Census PDF Report"
+          >
+            <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <span className="hidden sm:inline">Family Survey PDF</span>
+          </button>
           <button
             onClick={handleExportPdf}
             className="p-2 sm:px-3 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 shadow-xs flex items-center gap-1.5"
@@ -474,13 +585,13 @@ export default function MembersPage() {
 
       {/* Filter and Search Bar */}
       <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5">
           {/* Search */}
           <div className="relative sm:col-span-2">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search member by name, phone, address..."
+              placeholder="Search member by name, phone, division, ID, job..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -494,10 +605,24 @@ export default function MembersPage() {
               onChange={(e) => setStatusFilter(e.target.value)}
               className="w-full px-2.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
             >
-              <option value="All">All Members</option>
+              <option value="All">All Statuses</option>
               <option value="Active">Active Only</option>
               <option value="Inactive">Inactive Only</option>
               <option value="DueOnly">⚠️ Members with Pending Dues</option>
+            </select>
+          </div>
+
+          {/* Division / Area Filter */}
+          <div>
+            <select
+              value={divisionFilter}
+              onChange={(e) => setDivisionFilter(e.target.value)}
+              className="w-full px-2.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            >
+              <option value="All">All Divisions / Areas</option>
+              {uniqueDivisions.map((div, i) => (
+                <option key={i} value={div}>{div}</option>
+              ))}
             </select>
           </div>
 
@@ -532,10 +657,15 @@ export default function MembersPage() {
                 key={m.id}
                 className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 p-4 shadow-xs space-y-3"
               >
-                {/* Top Row: Name, Status & Action Icons */}
+                {/* Top Row: Name, Status, Badges & Action Icons */}
                 <div className="flex items-start justify-between gap-2">
-                  <div className="cursor-pointer" onClick={() => handleOpenDetails(m)}>
+                  <div className="cursor-pointer flex-1" onClick={() => handleOpenDetails(m)}>
                     <div className="flex items-center gap-1.5 flex-wrap">
+                      {m.idNumber && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/80">
+                          #{m.idNumber}
+                        </span>
+                      )}
                       <h4 className="font-bold text-sm text-slate-900 dark:text-white">
                         {m.name}
                       </h4>
@@ -547,9 +677,32 @@ export default function MembersPage() {
                         {m.status}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                      <Phone className="w-3 h-3" />
-                      <span>{m.phone}</span>
+
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-2 mt-1">
+                      {m.phone && (
+                        <span className="flex items-center gap-1">
+                          <Phone className="w-3 h-3 text-slate-400" />
+                          {m.phone}
+                        </span>
+                      )}
+                      {m.division && (
+                        <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                          <Building className="w-2.5 h-2.5" />
+                          {m.division}
+                        </span>
+                      )}
+                      {m.job && (
+                        <span className="inline-flex items-center gap-1 text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px]">
+                          <Briefcase className="w-2.5 h-2.5 text-slate-400" />
+                          {m.job}
+                        </span>
+                      )}
+                      {m.hasFamily && (
+                        <span className="inline-flex items-center gap-1 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                          <Users className="w-2.5 h-2.5" />
+                          Family: {m.adultsCount || 0}A, {m.childrenCount || 0}C
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -569,17 +722,16 @@ export default function MembersPage() {
                       <MessageCircle className="w-4 h-4" />
                     </button>
 
-                    {/* Pay Button (Disabled if already up to date!) */}
+                    {/* Pay Button (Always clickable for dues or advance payments) */}
                     <button
                       type="button"
                       onClick={() => handleOpenPayment(m)}
-                      disabled={!hasDues}
                       className={`p-2 rounded-xl transition-all ${
                         hasDues
                           ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-xs'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed opacity-60'
+                          : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100'
                       }`}
-                      title={hasDues ? 'Record Payment' : 'Member is up to date'}
+                      title={hasDues ? 'Record Payment' : 'Pay in advance'}
                     >
                       <CreditCard className="w-4 h-4" />
                     </button>
@@ -738,7 +890,12 @@ export default function MembersPage() {
                   return (
                     <tr key={m.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {m.idNumber && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/80">
+                              #{m.idNumber}
+                            </span>
+                          )}
                           <span className="font-semibold text-slate-900 dark:text-white">
                             {m.name}
                           </span>
@@ -750,9 +907,26 @@ export default function MembersPage() {
                             {m.status}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
-                          <span>📞 {m.phone}</span>
-                          {m.address && <span>• 📍 {m.address}</span>}
+                        <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-2 mt-1">
+                          {m.phone && <span>📞 {m.phone}</span>}
+                          {m.division && (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded font-medium">
+                              <Building className="w-2.5 h-2.5" />
+                              {m.division}
+                            </span>
+                          )}
+                          {m.job && (
+                            <span className="inline-flex items-center gap-1 text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                              <Briefcase className="w-2.5 h-2.5" />
+                              {m.job}
+                            </span>
+                          )}
+                          {m.hasFamily && (
+                            <span className="inline-flex items-center gap-1 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 px-1.5 py-0.5 rounded font-semibold text-[10px]">
+                              <Users className="w-2.5 h-2.5" />
+                              Family: {m.adultsCount || 0}A, {m.childrenCount || 0}C
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -828,29 +1002,33 @@ export default function MembersPage() {
                         </button>
                       </td>
 
-                      {/* Record Payment Button (or View History / Revert if Paid) */}
+                      {/* Record Payment Button (or Advance Payment + History / Revert) */}
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        {hasDues ? (
+                        <div className="inline-flex items-center gap-1">
                           <button
                             type="button"
                             onClick={() => handleOpenPayment(m)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-emerald-300 dark:border-emerald-700/80 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors"
-                            title="Record Payment"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+                              hasDues
+                                ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 hover:bg-amber-100'
+                                : 'border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                            }`}
+                            title={hasDues ? 'Record Payment' : 'Pay upcoming months in advance'}
                           >
-                            <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Pay</span>
+                            <CreditCard className="w-3.5 h-3.5" />
+                            <span>{hasDues ? 'Pay' : 'Advance'}</span>
                           </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenHistory(m)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/70 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shadow-xs"
-                            title="All subscriptions paid! Click to view history or revert accidental payment"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Paid <span className="text-[10px] opacity-80 font-normal underline">(Revert)</span></span>
-                          </button>
-                        )}
+                          {!hasDues && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenHistory(m)}
+                              className="px-2 py-1.5 rounded-xl text-[11px] text-emerald-600 hover:text-emerald-700 underline font-normal"
+                              title="View History / Revert"
+                            >
+                              History
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
@@ -925,12 +1103,12 @@ export default function MembersPage() {
             </div>
 
             <form onSubmit={handleRecordPayment} className="py-4 space-y-4">
-              {/* Multi-Month Due Selector */}
-              {activePayingMember.dueMonths && activePayingMember.dueMonths.length > 0 && (
+              {/* Multi-Month Due Selector (Past / Overdue) */}
+              {activePayingMember.dueMonths && activePayingMember.dueMonths.length > 0 ? (
                 <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100 dark:border-emerald-900/40">
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-xs font-bold uppercase text-emerald-800 dark:text-emerald-300">
-                      Select Months to Pay:
+                      Pending Dues to Pay:
                     </label>
                     <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
                       {selectedPaymentMonths.length} month(s) selected
@@ -961,11 +1139,80 @@ export default function MembersPage() {
                       );
                     })}
                   </div>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
-                    💡 Select multiple months, or enter amount below — both calculate months and fee automatically!
-                  </p>
+                </div>
+              ) : (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300 font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>All past subscription dues are cleared! You can add advance payments for upcoming months or future years below.</span>
                 </div>
               )}
+
+              {/* Advance & Future Months Selector */}
+              <div className="p-3 bg-blue-50/60 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase text-blue-900 dark:text-blue-300">
+                    ➕ Add Future / Advance Month Payment:
+                  </span>
+                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">
+                    Pay ahead for upcoming years
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={customAdvanceMonth}
+                    onChange={(e) => setCustomAdvanceMonth(parseInt(e.target.value))}
+                    className="flex-1 px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
+                  >
+                    {MONTH_NAMES.map((name, i) => (
+                      <option key={i} value={i + 1}>{name}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={customAdvanceYear}
+                    onChange={(e) => setCustomAdvanceYear(parseInt(e.target.value))}
+                    className="w-24 px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
+                  >
+                    {[currentYear, currentYear + 1, currentYear + 2, currentYear + 3, currentYear + 4].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleAddCustomAdvanceMonth}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add</span>
+                  </button>
+                </div>
+
+                {/* Badges for currently selected batch */}
+                {selectedPaymentMonths.length > 0 && (
+                  <div className="pt-1.5 border-t border-blue-100 dark:border-blue-900/40">
+                    <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
+                      Selected Months in this Payment Batch ({selectedPaymentMonths.length}):
+                    </span>
+                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                      {selectedPaymentMonths.map((mItem, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-600 text-white text-[10px] font-semibold"
+                        >
+                          {mItem.label || `${MONTH_NAMES[mItem.month - 1]} ${mItem.year}`}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleDueMonth(mItem)}
+                            className="hover:text-rose-200 ml-0.5"
+                            title="Remove month from payment"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Amounts */}
               <div className="grid grid-cols-2 gap-3">
@@ -1145,6 +1392,41 @@ export default function MembersPage() {
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* Family Census & Mahallu Survey Details */}
+              <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/50 space-y-2">
+                <span className="text-[10px] uppercase font-bold text-blue-900 dark:text-blue-300 block">
+                  Family Census & Mahallu Survey Details
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-700 dark:text-slate-300">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">ID / House No:</span>
+                    <span className="font-bold">{detailMember.idNumber || 'None'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Division / Area:</span>
+                    <span className="font-bold">{detailMember.division || 'Not specified'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Job / Profession:</span>
+                    <span className="font-bold">{detailMember.job || 'Not specified'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Family Members:</span>
+                    <span className="font-bold">
+                      {detailMember.hasFamily
+                        ? `${detailMember.adultsCount || 0} Adults, ${detailMember.childrenCount || 0} Kids`
+                        : 'Single / None'}
+                    </span>
+                  </div>
+                </div>
+                {detailMember.hasFamily && detailMember.familyDetails && (
+                  <div className="pt-1 border-t border-blue-100 dark:border-blue-900/40 text-[11px]">
+                    <span className="font-semibold text-slate-500 dark:text-slate-400">Members & Ages: </span>
+                    <span className="text-slate-800 dark:text-slate-200">{detailMember.familyDetails}</span>
+                  </div>
+                )}
               </div>
 
               {/* Remarks / Notes added when creating member */}
@@ -1425,6 +1707,48 @@ export default function MembersPage() {
                 </div>
               </div>
 
+              {/* ID Number, Division / Area, and Job Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                    ID / House No. <span className="text-[10px] text-slate-400 font-normal lowercase">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. M-104 or H-12"
+                    value={formData.idNumber}
+                    onChange={(e) => setFormData({ ...formData, idNumber: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                    Division / Area
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Chulliyode, Ward 3"
+                    value={formData.division}
+                    onChange={(e) => setFormData({ ...formData, division: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                    Job / Profession
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Teacher, Business"
+                    value={formData.job}
+                    onChange={(e) => setFormData({ ...formData, job: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
                   Residential Address
@@ -1561,6 +1885,64 @@ export default function MembersPage() {
                         value={formData.madrasaMonthlyFee}
                         onChange={(e) => setFormData({ ...formData, madrasaMonthlyFee: parseFloat(e.target.value) || 0 })}
                         className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Family Members & Survey Section (Census) */}
+              <div className="p-4 rounded-xl border border-blue-200/70 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-950/20 space-y-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.hasFamily}
+                    onChange={(e) => setFormData({ ...formData, hasFamily: e.target.checked })}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Add Family Members & Census Survey Details
+                  </span>
+                </label>
+
+                {formData.hasFamily && (
+                  <div className="space-y-3 pt-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                          Adults Count (incl. Member)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.adultsCount}
+                          onChange={(e) => setFormData({ ...formData, adultsCount: parseInt(e.target.value) || 0 })}
+                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                          Children Count
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.childrenCount}
+                          onChange={(e) => setFormData({ ...formData, childrenCount: parseInt(e.target.value) || 0 })}
+                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                        Family Members Details & Ages
+                      </label>
+                      <textarea
+                        rows={2}
+                        placeholder="e.g. Wife: Amina (38), Son: Rashid (14), Daughter: Fatima (9)..."
+                        value={formData.familyDetails}
+                        onChange={(e) => setFormData({ ...formData, familyDetails: e.target.value })}
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       />
                     </div>
                   </div>

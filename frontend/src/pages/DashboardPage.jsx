@@ -18,6 +18,7 @@ import {
   Download,
   FileText,
   Calendar,
+  Utensils
 } from 'lucide-react';
 import { MONTH_NAMES } from '../utils/categoriesData';
 import { exportToPdf, fmtPdfAmount } from '../utils/exportPdf';
@@ -209,6 +210,14 @@ export default function DashboardPage({ onNavigate }) {
             >
               <Users className="w-3.5 h-3.5" />
               <span>Members</span>
+            </button>
+            <button
+              onClick={() => onNavigate('food-schedule')}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-950/60 hover:bg-emerald-950 border border-teal-400/30 text-teal-200 text-xs font-semibold rounded-xl transition-transform active:scale-95"
+              title="Daily Food Duty Schedule"
+            >
+              <Utensils className="w-3.5 h-3.5" />
+              <span>Food Duty</span>
             </button>
             <button
               onClick={() => setShowStatementModal(true)}

@@ -13,6 +13,7 @@ const memberRoutes = require('./routes/members');
 const staffRoutes = require('./routes/staff');
 const categoryRoutes = require('./routes/categories');
 const backupRoutes = require('./routes/backup');
+const foodDutyRoutes = require('./routes/foodDuties');
 
 const app = express();
 // Default to 5001. If PORT is set to 5000, redirect to 5001 because macOS Control Center AirPlay Receiver occupies 5000
@@ -87,6 +88,7 @@ app.use('/api/members', memberRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/backup', backupRoutes);
+app.use('/api/food-duties', foodDutyRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

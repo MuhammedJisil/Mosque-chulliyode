@@ -7,7 +7,8 @@ import {
   UserCheck,
   X,
   HeartHandshake,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Utensils
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, onTabChange, isOpen, onClose }) {
@@ -16,6 +17,7 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, onClose }) {
     { id: 'income', label: 'Income Management', icon: ArrowDownLeft },
     { id: 'expense', label: 'Expense Management', icon: ArrowUpRight },
     { id: 'members', label: 'Members & Madrasa', icon: Users },
+    { id: 'food-schedule', label: 'Food Duty (ഭക്ഷണപ്പടി)', icon: Utensils },
     { id: 'staff', label: 'Staff & Payroll', icon: UserCheck },
   ];
 

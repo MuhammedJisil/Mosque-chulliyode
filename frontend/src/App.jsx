@@ -10,6 +10,7 @@ import IncomePage from './pages/IncomePage';
 import ExpensePage from './pages/ExpensePage';
 import MembersPage from './pages/MembersPage';
 import StaffPage from './pages/StaffPage';
+import FoodSchedulePage from './pages/FoodSchedulePage';
 
 function MainApp() {
   const { isAuthenticated, loading } = useAuth();
@@ -41,6 +42,8 @@ function MainApp() {
         return <ExpensePage />;
       case 'members':
         return <MembersPage />;
+      case 'food-schedule':
+        return <FoodSchedulePage />;
       case 'staff':
         return <StaffPage />;
       default:

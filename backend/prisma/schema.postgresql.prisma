@@ -58,6 +58,13 @@ model Member {
   name                 String
   address              String?
   phone                String?         @default("")
+  job                  String?
+  division             String?         // Ward / Division / Area
+  idNumber             String?         // Member / House ID number
+  hasFamily            Boolean         @default(false)
+  adultsCount          Int             @default(0)
+  childrenCount        Int             @default(0)
+  familyDetails        String?         // Notes on family members & ages (e.g. JSON or text)
   joiningDate          DateTime        @default(now())
   monthlyDonation      Float           @default(100.0)
   openingBalance       Float           @default(0.0) // Initial past due balance / arrears when registering member
@@ -69,6 +76,7 @@ model Member {
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
   payments             MemberPayment[]
+  foodDuties           FoodDuty[]
 }
 
 model MemberPayment {
@@ -130,4 +138,19 @@ model Setting {
   key       String   @unique
   value     String
   updatedAt DateTime @updatedAt
+}
+
+model FoodDuty {
+  id          Int      @id @default(autoincrement())
+  memberId    Int?
+  member      Member?  @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  customName  String?
+  phone       String?
+  division    String?
+  date        DateTime
+  mealType    String   @default("All Day") // "All Day", "Breakfast", "Lunch", "Dinner"
+  status      String   @default("Pending") // "Pending", "Completed", "Swapped", "Cancelled"
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
