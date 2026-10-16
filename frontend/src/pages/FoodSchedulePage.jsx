@@ -411,7 +411,7 @@ export default function FoodSchedulePage() {
       {/* ======================================================== */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Today's House Card */}
-        <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-emerald-600 to-teal-800 text-white p-5 sm:p-6 shadow-xl shadow-emerald-900/10">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white p-5 sm:p-6 shadow-xl shadow-emerald-900/10">
           <div className="absolute top-0 right-0 -mr-6 -mt-6 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none" />
           <div className="flex items-center justify-between pb-3 border-b border-white/20">
             <div className="flex items-center gap-2">
@@ -527,7 +527,7 @@ export default function FoodSchedulePage() {
         </div>
 
         {/* Tomorrow's House Card */}
-        <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-blue-700 to-indigo-900 text-white p-5 sm:p-6 shadow-xl shadow-blue-900/10">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-700 to-indigo-900 text-white p-5 sm:p-6 shadow-xl shadow-blue-900/10">
           <div className="absolute top-0 right-0 -mr-6 -mt-6 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none" />
           <div className="flex items-center justify-between pb-3 border-b border-white/20">
             <div className="flex items-center gap-2">

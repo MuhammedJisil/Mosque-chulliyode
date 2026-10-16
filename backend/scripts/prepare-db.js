@@ -18,7 +18,7 @@ if (isProd) {
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgres')) {
     console.log('🚀 Syncing schema with production PostgreSQL database...');
     try {
-      execSync('npx prisma db push --schema=prisma/schema.postgresql.prisma', { stdio: 'inherit' });
+      execSync('npx prisma db push --schema=prisma/schema.postgresql.prisma --accept-data-loss', { stdio: 'inherit' });
       console.log('✅ PostgreSQL database synced successfully.');
     } catch (err) {
       console.warn('⚠️ Warning during prisma db push:', err.message);

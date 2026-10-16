@@ -195,11 +195,17 @@ export default function MembersPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
+      const payload = {
+        ...formData,
+        hasFamily: Boolean(formData.hasFamily || (formData.adultsCount > 0 || formData.childrenCount > 0)),
+        adultsCount: parseInt(formData.adultsCount) || 0,
+        childrenCount: parseInt(formData.childrenCount) || 0,
+      };
       if (editingMember) {
-        await api.put(`/api/members/${editingMember.id}`, formData);
+        await api.put(`/api/members/${editingMember.id}`, payload);
         toast.success('Member details updated successfully');
       } else {
-        await api.post('/api/members', formData);
+        await api.post('/api/members', payload);
         toast.success('New member registered successfully');
       }
       setShowAddModal(false);
@@ -697,10 +703,10 @@ export default function MembersPage() {
                           {m.job}
                         </span>
                       )}
-                      {m.hasFamily && (
+                      {(m.hasFamily || ((m.adultsCount || 0) + (m.childrenCount || 0) > 0)) && (
                         <span className="inline-flex items-center gap-1 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 px-1.5 py-0.5 rounded text-[10px] font-semibold">
                           <Users className="w-2.5 h-2.5" />
-                          Family: {m.adultsCount || 0}A, {m.childrenCount || 0}C
+                          Family: {(m.adultsCount || 0) + (m.childrenCount || 0)} ({m.adultsCount || 0} Adults, {m.childrenCount || 0} Kids)
                         </span>
                       )}
                     </div>
@@ -921,10 +927,10 @@ export default function MembersPage() {
                               {m.job}
                             </span>
                           )}
-                          {m.hasFamily && (
+                          {(m.hasFamily || ((m.adultsCount || 0) + (m.childrenCount || 0) > 0)) && (
                             <span className="inline-flex items-center gap-1 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 px-1.5 py-0.5 rounded font-semibold text-[10px]">
                               <Users className="w-2.5 h-2.5" />
-                              Family: {m.adultsCount || 0}A, {m.childrenCount || 0}C
+                              Family: {(m.adultsCount || 0) + (m.childrenCount || 0)} ({m.adultsCount || 0} Adults, {m.childrenCount || 0} Kids)
                             </span>
                           )}
                         </div>

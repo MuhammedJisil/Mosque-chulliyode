@@ -28,9 +28,25 @@ export const api = {
       }
     }
 
-    const data = await response.json();
+    let data;
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      let cleanMsg = '';
+      if (text.includes('<pre>')) {
+        cleanMsg = text.split('<pre>')[1]?.split('</pre>')[0]?.trim();
+      } else if (text.length > 0 && text.length < 150 && !text.includes('<')) {
+        cleanMsg = text.trim();
+      } else {
+        cleanMsg = `Server responded with ${response.status} (${response.statusText || 'Error'}). Please check backend status.`;
+      }
+      data = { message: cleanMsg };
+    }
+
     if (!response.ok) {
-      throw new Error(data.message || 'API request failed');
+      throw new Error(data.message || `API request failed with status ${response.status}`);
     }
     return data;
   },
