@@ -16,6 +16,19 @@ const backupRoutes = require('./routes/backup');
 const foodDutyRoutes = require('./routes/foodDuties');
 
 const app = express();
+
+// Ensure PostgreSQL database schema has all columns and tables on Render / production
+if (process.env.RENDER || (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgres'))) {
+  try {
+    const { execSync } = require('child_process');
+    console.log('🚀 Checking and syncing Neon PostgreSQL schema with Prisma...');
+    execSync('npx prisma db push --schema=prisma/schema.postgresql.prisma --accept-data-loss', { stdio: 'inherit' });
+    console.log('✅ Neon PostgreSQL database schema is verified and up-to-date.');
+  } catch (err) {
+    console.warn('⚠️ Warning during initial database sync check:', err.message);
+  }
+}
+
 // Default to 5001. If PORT is set to 5000, redirect to 5001 because macOS Control Center AirPlay Receiver occupies 5000
 const rawPort = parseInt(process.env.PORT, 10);
 const PORT = (!rawPort || rawPort === 5000) ? 5001 : rawPort;

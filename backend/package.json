@@ -4,7 +4,7 @@
   "description": "Backend API for Mosque Management System with Prisma and PostgreSQL / Supabase",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node scripts/prepare-db.js && node src/server.js",
     "dev": "PORT=5001 node --watch src/server.js",
     "build": "node scripts/prepare-db.js",
     "postinstall": "node scripts/prepare-db.js",
