@@ -33,7 +33,8 @@ import {
   Briefcase,
   Building,
   Hash,
-  FileText
+  FileText,
+  RotateCw
 } from 'lucide-react';
 
 export default function MembersPage() {
@@ -42,8 +43,10 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Filters
-  const [search, setSearch] = useState('');
+  // Filters & Debounced Search
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const [statusFilter, setStatusFilter] = useState('All'); // 'All', 'Active', 'Inactive', 'DueOnly'
   const [divisionFilter, setDivisionFilter] = useState('All');
 
@@ -101,11 +104,24 @@ export default function MembersPage() {
   const [customAdvanceMonth, setCustomAdvanceMonth] = useState(currentMonth);
   const [customAdvanceYear, setCustomAdvanceYear] = useState(currentYear);
 
-  const fetchMembers = async () => {
+  // Debounce search input: waits 350ms after user pauses continuous typing
+  useEffect(() => {
+    if (searchInput.trim() !== debouncedSearch) {
+      setIsSearching(true);
+    }
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput.trim());
+      setIsSearching(false);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const fetchMembers = async (query = debouncedSearch) => {
     try {
       setLoading(true);
       const res = await api.get('/api/members', {
-        search,
+        search: query ? query.trim() : undefined,
         status: statusFilter !== 'All' && statusFilter !== 'DueOnly' ? statusFilter : undefined,
         division: divisionFilter !== 'All' ? divisionFilter : undefined,
       });
@@ -120,12 +136,54 @@ export default function MembersPage() {
       setError(err.message || 'Failed to fetch members');
     } finally {
       setLoading(false);
+      setIsSearching(false);
     }
   };
 
   useEffect(() => {
-    fetchMembers();
-  }, [search, statusFilter, divisionFilter]);
+    fetchMembers(debouncedSearch);
+  }, [debouncedSearch, statusFilter, divisionFilter]);
+
+  // Smart real-time search & prefix ranking
+  const displayedMembers = useMemo(() => {
+    const q = searchInput.trim().toLowerCase();
+    if (!q) return members;
+
+    return [...members]
+      .filter(m => {
+        const name = (m.name || '').toLowerCase();
+        const phone = (m.phone || '').toLowerCase();
+        const division = (m.division || '').toLowerCase();
+        const idNumber = (m.idNumber || '').toLowerCase();
+        const job = (m.job || '').toLowerCase();
+        const address = (m.address || '').toLowerCase();
+        return name.includes(q) || phone.includes(q) || division.includes(q) || idNumber.includes(q) || job.includes(q) || address.includes(q);
+      })
+      .sort((a, b) => {
+        const aName = (a.name || '').toLowerCase();
+        const bName = (b.name || '').toLowerCase();
+
+        // 1. Full name starts with query (e.g. "Jisil..." when typing "j" or "ji")
+        const aStarts = aName.startsWith(q);
+        const bStarts = bName.startsWith(q);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+
+        // 2. Any word in the name starts with query (e.g. "Muhammed Jisil" when typing "ji")
+        const aWordStarts = aName.split(/\s+/).some(w => w.startsWith(q));
+        const bWordStarts = bName.split(/\s+/).some(w => w.startsWith(q));
+        if (aWordStarts && !bWordStarts) return -1;
+        if (!aWordStarts && bWordStarts) return 1;
+
+        // 3. Name contains query
+        const aContains = aName.includes(q);
+        const bContains = bName.includes(q);
+        if (aContains && !bContains) return -1;
+        if (!aContains && bContains) return 1;
+
+        return aName.localeCompare(bName);
+      });
+  }, [members, searchInput]);
 
   // Unique divisions for filter dropdown
   const uniqueDivisions = useMemo(() => {
@@ -142,12 +200,12 @@ export default function MembersPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter]);
+  }, [searchInput, statusFilter, divisionFilter]);
 
   const paginatedMembers = useMemo(() => {
     const startIndex = (currentPage - 1) * PAGE_SIZE;
-    return members.slice(startIndex, startIndex + PAGE_SIZE);
-  }, [members, currentPage]);
+    return displayedMembers.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [displayedMembers, currentPage]);
 
   const handleOpenAdd = () => {
     setEditingMember(null);
@@ -470,7 +528,7 @@ export default function MembersPage() {
   // Export Members List to PDF
   const handleExportPdf = () => {
     const columns = ['Name', 'Phone', 'Monthly Fee', 'Madrasa Fee', 'Opening Balance', 'Status', 'Due Months', 'Total Due (₹)'];
-    const rows = members.map(m => [
+    const rows = displayedMembers.map(m => [
       m.name,
       m.phone || '-',
       '₹' + m.monthlyDonation,
@@ -481,12 +539,12 @@ export default function MembersPage() {
       '₹' + Number(m.totalDueAmount || 0).toLocaleString('en-IN'),
     ]);
 
-    const totalDues = members.reduce((acc, m) => acc + (m.totalDueAmount || 0), 0);
-    const totalOpeningBalDue = members.reduce((acc, m) => acc + (m.netOpeningBalanceDue || 0), 0);
+    const totalDues = displayedMembers.reduce((acc, m) => acc + (m.totalDueAmount || 0), 0);
+    const totalOpeningBalDue = displayedMembers.reduce((acc, m) => acc + (m.netOpeningBalanceDue || 0), 0);
 
     exportToPdf({
       title: 'Masjid al noor - Member Subscriptions & Due Report',
-      subtitle: `sirajul huda sangam chulliyode • Total Members: ${members.length}`,
+      subtitle: `sirajul huda sangam chulliyode • Total Members: ${displayedMembers.length}`,
       dateRange: 'Current Status',
       columns,
       rows,
@@ -500,7 +558,7 @@ export default function MembersPage() {
 
   // Export Members to Excel
   const handleExportExcel = () => {
-    const excelRows = members.map(m => ({
+    const excelRows = displayedMembers.map(m => ({
       'Name': m.name,
       'Phone': m.phone,
       'Address': m.address || '',
@@ -526,13 +584,13 @@ export default function MembersPage() {
   // Dedicated Mahallu Family Census & Survey PDF Export
   const handleExportSurveyPdf = () => {
     exportFamilySurveyPdf({
-      members,
+      members: displayedMembers,
       division: divisionFilter !== 'All' ? divisionFilter : 'All Divisions / Areas',
       fileName: `Mahallu_Family_Survey_${divisionFilter !== 'All' ? divisionFilter.replace(/\s+/g, '_') : 'All'}.pdf`
     });
   };
 
-  const totalDuesAll = useMemo(() => members.reduce((acc, m) => acc + (m.totalDueAmount || 0), 0), [members]);
+  const totalDuesAll = useMemo(() => displayedMembers.reduce((acc, m) => acc + (m.totalDueAmount || 0), 0), [displayedMembers]);
 
   // hasDues also accounts for opening balance arrears
   const getMemberHasDues = (m) => m.dueMonthsCount > 0 || (m.netOpeningBalanceDue || 0) > 0;
@@ -545,7 +603,7 @@ export default function MembersPage() {
           <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
             Members & Madrasa Subscriptions
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-semibold">
-              {members.length} Members
+              {displayedMembers.length} {displayedMembers.length === 1 ? 'Member' : 'Members'}
             </span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -592,16 +650,40 @@ export default function MembersPage() {
       {/* Filter and Search Bar */}
       <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5">
-          {/* Search */}
+          {/* Search with Real-Time Debounced Indicator & Clear Button */}
           <div className="relative sm:col-span-2">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search member by name, phone, division, ID, job..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  setDebouncedSearch(searchInput.trim());
+                }
+              }}
+              className="w-full pl-9 pr-9 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
             />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchInput('');
+                  setDebouncedSearch('');
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-colors"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {isSearching && (
+              <span className="absolute right-8 top-1/2 -translate-y-1/2 pointer-events-none">
+                <RotateCw className="w-3.5 h-3.5 text-emerald-500 animate-spin" />
+              </span>
+            )}
           </div>
 
           {/* Status Filter */}
@@ -650,7 +732,7 @@ export default function MembersPage() {
             <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
             Loading members...
           </div>
-        ) : members.length === 0 ? (
+        ) : displayedMembers.length === 0 ? (
           <div className="py-12 text-center text-slate-400 bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 text-xs">
             No members found matching your search.
           </div>
@@ -851,7 +933,7 @@ export default function MembersPage() {
           })}
           <Pagination
             currentPage={currentPage}
-            totalItems={members.length}
+            totalItems={displayedMembers.length}
             pageSize={PAGE_SIZE}
             onPageChange={setCurrentPage}
           />
@@ -884,7 +966,7 @@ export default function MembersPage() {
                     Loading member records...
                   </td>
                 </tr>
-              ) : members.length === 0 ? (
+              ) : displayedMembers.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
                     No members found matching your filter criteria.
@@ -1078,7 +1160,7 @@ export default function MembersPage() {
         </div>
         <Pagination
           currentPage={currentPage}
-          totalItems={members.length}
+          totalItems={displayedMembers.length}
           pageSize={PAGE_SIZE}
           onPageChange={setCurrentPage}
           className="p-4"

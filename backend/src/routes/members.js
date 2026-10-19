@@ -79,16 +79,28 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const { search, status, division } = req.query;
 
+    const isPostgres = Boolean(
+      process.env.RENDER ||
+      process.env.NODE_ENV === 'production' ||
+      (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgres'))
+    );
+
+    const stringFilter = (value) => (
+      isPostgres
+        ? { contains: value, mode: 'insensitive' }
+        : { contains: value }
+    );
+
     const where = {};
     if (search && search.trim() !== '') {
       const q = search.trim();
       where.OR = [
-        { name: { contains: q } },
-        { phone: { contains: q } },
-        { address: { contains: q } },
-        { idNumber: { contains: q } },
-        { division: { contains: q } },
-        { job: { contains: q } },
+        { name: stringFilter(q) },
+        { phone: stringFilter(q) },
+        { address: stringFilter(q) },
+        { idNumber: stringFilter(q) },
+        { division: stringFilter(q) },
+        { job: stringFilter(q) },
       ];
     }
 
@@ -110,13 +122,43 @@ router.get('/', authMiddleware, async (req, res) => {
       orderBy: { name: 'asc' }
     });
 
-    const membersWithDue = members.map(m => {
+    let membersWithDue = members.map(m => {
       const dueInfo = calculateMemberDue(m, m.payments);
       return {
         ...m,
         ...dueInfo,
       };
     });
+
+    // Smart Search Ranking: prioritize prefix matches (e.g. startsWith 'j', then word startsWith 'j')
+    if (search && search.trim() !== '') {
+      const qLower = search.trim().toLowerCase();
+      membersWithDue.sort((a, b) => {
+        const aName = (a.name || '').toLowerCase();
+        const bName = (b.name || '').toLowerCase();
+
+        // 1. Exact start of member full name (e.g. "Jisil..." when typing "ji")
+        const aStarts = aName.startsWith(qLower);
+        const bStarts = bName.startsWith(qLower);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+
+        // 2. Any word in the name starts with query (e.g. "Muhammed Jisil" when typing "ji")
+        const aWordStarts = aName.split(/\s+/).some(w => w.startsWith(qLower));
+        const bWordStarts = bName.split(/\s+/).some(w => w.startsWith(qLower));
+        if (aWordStarts && !bWordStarts) return -1;
+        if (!aWordStarts && bWordStarts) return 1;
+
+        // 3. Name contains query
+        const aContains = aName.includes(qLower);
+        const bContains = bName.includes(qLower);
+        if (aContains && !bContains) return -1;
+        if (!aContains && bContains) return 1;
+
+        // 4. Default alphabetical sort
+        return aName.localeCompare(bName);
+      });
+    }
 
     res.json({
       success: true,
