@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search,
   Plus,
@@ -1135,10 +1136,11 @@ export default function MadrasaPage() {
       {/* ======================================================== */}
       {/* MODAL 1: ADD / EDIT MADRASA RECORD (SIMPLE)              */}
       {/* ======================================================== */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg shadow-xl border border-slate-200 dark:border-slate-800 my-8">
-            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+      {showAddModal && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex items-start sm:items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-auto shrink-0">
+            {/* Pinned Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900 z-10">
               <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
                 <GraduationCap className="w-5 h-5 text-emerald-600" />
                 {editingStudent ? 'Edit Madrasa Record' : 'Register Madrasa Entry'}
@@ -1146,296 +1148,302 @@ export default function MadrasaPage() {
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4">
-              {/* Select Mahallu Member Parent (Dropdown / Search) */}
-              <div className="p-3.5 bg-emerald-50/70 dark:bg-emerald-950/20 rounded-xl border border-emerald-200/80 dark:border-emerald-800/60 space-y-2">
-                <label className="block text-xs font-bold text-emerald-900 dark:text-emerald-300">
-                  Select Mahallu Member (Parent / Guardian) *
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Type member name, phone or ward to select..."
-                    value={memberSearchTerm}
-                    onChange={(e) => {
-                      setMemberSearchTerm(e.target.value);
-                      setShowMemberDropdown(true);
-                    }}
-                    onFocus={() => setShowMemberDropdown(true)}
-                    className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                  {formData.memberId && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormData({
-                          ...formData,
-                          memberId: '',
-                          parentName: '',
-                          parentPhone: '',
-                          job: '',
-                          division: '',
-                        });
-                        setMemberSearchTerm('');
+            {/* Form with scrollable body and pinned footer */}
+            <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain">
+                {/* Select Mahallu Member Parent (Dropdown / Search) */}
+                <div className="p-3.5 bg-emerald-50/70 dark:bg-emerald-950/20 rounded-xl border border-emerald-200/80 dark:border-emerald-800/60 space-y-2">
+                  <label className="block text-xs font-bold text-emerald-900 dark:text-emerald-300">
+                    Select Mahallu Member (Parent / Guardian) *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Type member name, phone or ward to select..."
+                      value={memberSearchTerm}
+                      onChange={(e) => {
+                        setMemberSearchTerm(e.target.value);
+                        setShowMemberDropdown(true);
                       }}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-rose-500 hover:text-rose-700 font-bold"
-                    >
-                      Clear
-                    </button>
-                  )}
+                      onFocus={() => setShowMemberDropdown(true)}
+                      className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    {formData.memberId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData({
+                            ...formData,
+                            memberId: '',
+                            parentName: '',
+                            parentPhone: '',
+                            job: '',
+                            division: '',
+                          });
+                          setMemberSearchTerm('');
+                        }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-rose-500 hover:text-rose-700 font-bold"
+                      >
+                        Clear
+                      </button>
+                    )}
 
-                  {showMemberDropdown && (
-                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
-                      {filteredParentMembers.length === 0 ? (
-                        <div className="p-2.5 text-xs text-slate-400 text-center">
-                          No matching Mahallu members found.
-                        </div>
-                      ) : (
-                        filteredParentMembers.map(m => (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => handleSelectParentMember(m)}
-                            className="w-full text-left p-2.5 hover:bg-emerald-50 dark:hover:bg-slate-700/60 transition-colors flex items-center justify-between text-xs"
-                          >
-                            <div>
-                              <div className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                                <span>{m.name}</span>
-                                {m.idNumber && (
-                                  <span className="text-[10px] text-blue-600">#{m.idNumber}</span>
-                                )}
+                    {showMemberDropdown && (
+                      <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+                        {filteredParentMembers.length === 0 ? (
+                          <div className="p-2.5 text-xs text-slate-400 text-center">
+                            No matching Mahallu members found.
+                          </div>
+                        ) : (
+                          filteredParentMembers.map(m => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => handleSelectParentMember(m)}
+                              className="w-full text-left p-2.5 hover:bg-emerald-50 dark:hover:bg-slate-700/60 transition-colors flex items-center justify-between text-xs"
+                            >
+                              <div>
+                                <div className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                                  <span>{m.name}</span>
+                                  {m.idNumber && (
+                                    <span className="text-[10px] text-blue-600">#{m.idNumber}</span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                  {m.phone && <span>📞 {m.phone}</span>}
+                                  {m.division && <span>📍 {m.division}</span>}
+                                  {m.job && <span>💼 {m.job}</span>}
+                                </div>
                               </div>
-                              <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
-                                {m.phone && <span>📞 {m.phone}</span>}
-                                {m.division && <span>📍 {m.division}</span>}
-                                {m.job && <span>💼 {m.job}</span>}
-                              </div>
-                            </div>
-                            {formData.memberId === m.id && (
-                              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                            )}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
+                              {formData.memberId === m.id && (
+                                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                              )}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Selecting a member automatically prefills parent name, phone, job, division and joining date.
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                  Selecting a member automatically prefills parent name, phone, job, division and joining date.
-                </div>
-              </div>
 
-              {/* Parent Name (Editable or Manual entry if non-member) */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Parent / Guardian Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Muhammed Jisil"
-                  value={formData.parentName}
-                  onChange={(e) => setFormData({ ...formData, parentName: e.target.value })}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              {/* Prefilled: Phone & Job */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Parent Name (Editable or Manual entry if non-member) */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Phone (Auto-prefilled)
+                    Parent / Guardian Name *
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. 9876543210"
-                    value={formData.parentPhone}
-                    onChange={(e) => setFormData({ ...formData, parentPhone: e.target.value })}
+                    required
+                    placeholder="e.g. Muhammed Jisil"
+                    value={formData.parentName}
+                    onChange={(e) => setFormData({ ...formData, parentName: e.target.value })}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Job / Occupation (Auto-prefilled)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Business, Teacher"
-                    value={formData.job}
-                    onChange={(e) => setFormData({ ...formData, job: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Prefilled: Area / Division & Admission Date */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Area / Division (Auto-prefilled)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Chulliyode, Area 1"
-                    value={formData.division}
-                    onChange={(e) => setFormData({ ...formData, division: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Admission / Joining Date
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.admissionDate}
-                    onChange={(e) => setFormData({ ...formData, admissionDate: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Number of Students & Auto-Calculating Monthly Fee */}
-              <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/20 rounded-xl border border-blue-200/80 dark:border-blue-900/40 space-y-3">
+                {/* Prefilled: Phone & Job */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-blue-900 dark:text-blue-300 mb-1">
-                      Number of Students *
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Phone (Auto-prefilled)
                     </label>
                     <input
-                      type="number"
-                      min="1"
-                      required
-                      value={formData.studentsCount}
-                      onChange={(e) => handleStudentsCountChange(e.target.value)}
-                      className="w-full px-3 py-2 text-sm font-bold rounded-xl border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      type="text"
+                      placeholder="e.g. 9876543210"
+                      value={formData.parentPhone}
+                      onChange={(e) => setFormData({ ...formData, parentPhone: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-blue-900 dark:text-blue-300 mb-1">
-                      Fee per Student (₹)
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Job / Occupation (Auto-prefilled)
                     </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">₹</span>
+                    <input
+                      type="text"
+                      placeholder="e.g. Business, Teacher"
+                      value={formData.job}
+                      onChange={(e) => setFormData({ ...formData, job: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Prefilled: Area / Division & Admission Date */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Area / Division (Auto-prefilled)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Chulliyode, Area 1"
+                      value={formData.division}
+                      onChange={(e) => setFormData({ ...formData, division: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Admission / Joining Date
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.admissionDate}
+                      onChange={(e) => setFormData({ ...formData, admissionDate: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Number of Students & Auto-Calculating Monthly Fee */}
+                <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/20 rounded-xl border border-blue-200/80 dark:border-blue-900/40 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-blue-900 dark:text-blue-300 mb-1">
+                        Number of Students *
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={formData.studentsCount}
+                        onChange={(e) => handleStudentsCountChange(e.target.value)}
+                        className="w-full px-3 py-2 text-sm font-bold rounded-xl border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-blue-900 dark:text-blue-300 mb-1">
+                        Fee per Student (₹)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.feePerStudent}
+                          onChange={(e) => handleFeePerStudentChange(e.target.value)}
+                          className="w-full pl-7 pr-3 py-2 text-sm font-semibold rounded-xl border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Auto Calculated Monthly Fee */}
+                  <div className="p-2.5 bg-white dark:bg-slate-800 rounded-lg border border-blue-200 dark:border-blue-800 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                        Total Monthly Fee:
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        Auto-calculated ({formData.studentsCount || 1} student(s) × ₹{formData.feePerStudent || 200})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-slate-400 font-bold">₹</span>
                       <input
                         type="number"
                         min="0"
-                        value={formData.feePerStudent}
-                        onChange={(e) => handleFeePerStudentChange(e.target.value)}
-                        className="w-full pl-7 pr-3 py-2 text-sm font-semibold rounded-xl border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        value={formData.monthlyFee}
+                        onChange={(e) => setFormData({ ...formData, monthlyFee: parseFloat(e.target.value) || 0 })}
+                        className="w-24 px-2 py-1 text-sm font-bold text-emerald-600 dark:text-emerald-400 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-right focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Auto Calculated Monthly Fee */}
-                <div className="p-2.5 bg-white dark:bg-slate-800 rounded-lg border border-blue-200 dark:border-blue-800 flex items-center justify-between">
+                {/* Opening Balance (Fee Arrears) & Status */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-                      Total Monthly Fee:
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      Auto-calculated ({formData.studentsCount || 1} student(s) × ₹{formData.feePerStudent || 200})
-                    </span>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Opening Balance Arrears (₹)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-orange-500 font-bold">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={formData.openingBalance}
+                        onChange={(e) => setFormData({ ...formData, openingBalance: parseFloat(e.target.value) || 0 })}
+                        className="w-full pl-7 pr-3 py-2 text-sm font-semibold rounded-xl border border-orange-200 dark:border-orange-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-orange-400 focus:outline-none"
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-slate-400 font-bold">₹</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.monthlyFee}
-                      onChange={(e) => setFormData({ ...formData, monthlyFee: parseFloat(e.target.value) || 0 })}
-                      className="w-24 px-2 py-1 text-sm font-bold text-emerald-600 dark:text-emerald-400 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-right focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-              </div>
 
-              {/* Opening Balance (Fee Arrears) & Status */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Opening Balance Arrears (₹)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-orange-500 font-bold">₹</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={formData.openingBalance}
-                      onChange={(e) => setFormData({ ...formData, openingBalance: parseFloat(e.target.value) || 0 })}
-                      className="w-full pl-7 pr-3 py-2 text-sm font-semibold rounded-xl border border-orange-200 dark:border-orange-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-orange-400 focus:outline-none"
-                    />
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Status
+                    </label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
                   </div>
                 </div>
 
+                {/* Notes */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Status
+                    Remarks / Student Names (Optional)
                   </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  <textarea
+                    rows={2}
+                    placeholder="Optional notes, names of kids, etc..."
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
+                  />
                 </div>
               </div>
 
-              {/* Notes */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Remarks / Student Names (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Optional notes, names of kids, etc..."
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
+              {/* Pinned Footer */}
+              <div className="p-3.5 sm:p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2 shrink-0 bg-slate-50 dark:bg-slate-900/90">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs disabled:opacity-50"
+                  className="px-5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs disabled:opacity-50 transition-colors"
                 >
                   {submitting ? 'Saving...' : editingStudent ? 'Update Record' : 'Save Record'}
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ======================================================== */}
       {/* MODAL 2: RECORD MULTI-MONTH FEE PAYMENT                 */}
       {/* ======================================================== */}
-      {showPaymentModal && activePayingStudent && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg shadow-xl border border-slate-200 dark:border-slate-800 my-8">
-            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+      {showPaymentModal && activePayingStudent && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex items-start sm:items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-auto shrink-0">
+            {/* Pinned Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900 z-10">
               <div>
                 <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
                   <Receipt className="w-5 h-5 text-emerald-600" />
@@ -1449,182 +1457,188 @@ export default function MadrasaPage() {
               <button
                 type="button"
                 onClick={() => setShowPaymentModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleRecordPayment} className="p-4 sm:p-5 space-y-4">
-              {/* Select Due Months */}
-              {activePayingStudent.dueMonths && activePayingStudent.dueMonths.length > 0 && (
-                <div className="p-3 bg-rose-50/70 dark:bg-rose-950/20 rounded-xl border border-rose-200 dark:border-rose-900/40">
-                  <span className="text-xs font-bold text-rose-800 dark:text-rose-300 block mb-2">
-                    Pending Due Months (Click to Select / Deselect):
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {activePayingStudent.dueMonths.map((d, idx) => {
-                      const isSelected = selectedPaymentMonths.some(item => item.month === d.month && item.year === d.year);
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => handleToggleDueMonth(d)}
-                          className={`px-2.5 py-1 text-xs font-bold rounded-lg border flex items-center gap-1.5 transition-all ${
-                            isSelected
-                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-emerald-500'
-                          }`}
-                        >
-                          {isSelected && <Check className="w-3 h-3" />}
-                          <span>{d.label}</span>
-                        </button>
-                      );
-                    })}
+            {/* Form with scrollable body and pinned footer */}
+            <form onSubmit={handleRecordPayment} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain">
+                {/* Select Due Months */}
+                {activePayingStudent.dueMonths && activePayingStudent.dueMonths.length > 0 && (
+                  <div className="p-3 bg-rose-50/70 dark:bg-rose-950/20 rounded-xl border border-rose-200 dark:border-rose-900/40">
+                    <span className="text-xs font-bold text-rose-800 dark:text-rose-300 block mb-2">
+                      Pending Due Months (Click to Select / Deselect):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {activePayingStudent.dueMonths.map((d, idx) => {
+                        const isSelected = selectedPaymentMonths.some(item => item.month === d.month && item.year === d.year);
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => handleToggleDueMonth(d)}
+                            className={`px-2.5 py-1 text-xs font-bold rounded-lg border flex items-center gap-1.5 transition-all ${
+                              isSelected
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-emerald-500'
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3 h-3" />}
+                            <span>{d.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
-
-              {/* Add Custom / Advance Month */}
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-                  Advance / Future Month Payment:
-                </span>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={customAdvanceMonth}
-                    onChange={(e) => setCustomAdvanceMonth(parseInt(e.target.value))}
-                    className="flex-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none"
-                  >
-                    {MONTH_NAMES.map((m, i) => (
-                      <option key={i + 1} value={i + 1}>{m}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={customAdvanceYear}
-                    onChange={(e) => setCustomAdvanceYear(parseInt(e.target.value))}
-                    className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none"
-                  >
-                    {[currentYear, currentYear + 1, currentYear + 2].map(y => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleAddCustomAdvanceMonth}
-                    className="px-3 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors whitespace-nowrap"
-                  >
-                    + Add Month
-                  </button>
-                </div>
-              </div>
-
-              {/* Fee Amount */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Madrasa Monthly Fee Amount (₹)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  required
-                  value={paymentForm.feeAmount}
-                  onChange={(e) => handleFeeAmountChange(e.target.value)}
-                  className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
-                {selectedPaymentMonths.length > 0 && (
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 block font-medium">
-                    Paying for {selectedPaymentMonths.length} month(s) ({selectedPaymentMonths.map(d => d.label).join(', ')})
-                  </span>
                 )}
-              </div>
 
-              {/* Opening Balance Payment */}
-              {(activePayingStudent.netOpeningBalanceDue || 0) > 0 && (
-                <div className="p-3 bg-orange-50 dark:bg-orange-950/30 rounded-xl border border-orange-200 dark:border-orange-800/60">
-                  <div className="text-xs font-bold text-orange-800 dark:text-orange-300 mb-1.5">
-                    Opening Balance Arrears: ₹{Number(activePayingStudent.netOpeningBalanceDue).toLocaleString('en-IN')}
-                  </div>
+                {/* Add Custom / Advance Month */}
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+                    Advance / Future Month Payment:
+                  </span>
                   <div className="flex items-center gap-2">
-                    <label className="text-xs text-slate-600 dark:text-slate-400 font-medium whitespace-nowrap">Pay Arrears (₹):</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max={activePayingStudent.netOpeningBalanceDue}
-                      value={paymentForm.openingBalanceAmount}
-                      onChange={(e) => setPaymentForm({ ...paymentForm, openingBalanceAmount: parseFloat(e.target.value) || 0 })}
-                      placeholder={`Max ₹${activePayingStudent.netOpeningBalanceDue}`}
-                      className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-orange-200 dark:border-orange-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                    />
+                    <select
+                      value={customAdvanceMonth}
+                      onChange={(e) => setCustomAdvanceMonth(parseInt(e.target.value))}
+                      className="flex-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none"
+                    >
+                      {MONTH_NAMES.map((m, i) => (
+                        <option key={i + 1} value={i + 1}>{m}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={customAdvanceYear}
+                      onChange={(e) => setCustomAdvanceYear(parseInt(e.target.value))}
+                      className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none"
+                    >
+                      {[currentYear, currentYear + 1, currentYear + 2].map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleAddCustomAdvanceMonth}
+                      className="px-3 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors whitespace-nowrap"
+                    >
+                      + Add Month
+                    </button>
                   </div>
                 </div>
-              )}
 
-              {/* Total Collection Amount */}
-              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
-                <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Total Madrasa Collection:</span>
-                <span className="text-base font-bold text-emerald-700 dark:text-emerald-300">
-                  ₹{(parseFloat(paymentForm.feeAmount || 0) + parseFloat(paymentForm.openingBalanceAmount || 0)).toLocaleString('en-IN')}
-                </span>
+                {/* Fee Amount */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Madrasa Monthly Fee Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={paymentForm.feeAmount}
+                    onChange={(e) => handleFeeAmountChange(e.target.value)}
+                    className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  {selectedPaymentMonths.length > 0 && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 block font-medium">
+                      Paying for {selectedPaymentMonths.length} month(s) ({selectedPaymentMonths.map(d => d.label).join(', ')})
+                    </span>
+                  )}
+                </div>
+
+                {/* Opening Balance Payment */}
+                {(activePayingStudent.netOpeningBalanceDue || 0) > 0 && (
+                  <div className="p-3 bg-orange-50 dark:bg-orange-950/30 rounded-xl border border-orange-200 dark:border-orange-800/60">
+                    <div className="text-xs font-bold text-orange-800 dark:text-orange-300 mb-1.5">
+                      Opening Balance Arrears: ₹{Number(activePayingStudent.netOpeningBalanceDue).toLocaleString('en-IN')}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-slate-600 dark:text-slate-400 font-medium whitespace-nowrap">Pay Arrears (₹):</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max={activePayingStudent.netOpeningBalanceDue}
+                        value={paymentForm.openingBalanceAmount}
+                        onChange={(e) => setPaymentForm({ ...paymentForm, openingBalanceAmount: parseFloat(e.target.value) || 0 })}
+                        placeholder={`Max ₹${activePayingStudent.netOpeningBalanceDue}`}
+                        className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-orange-200 dark:border-orange-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Total Collection Amount */}
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
+                  <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Total Madrasa Collection:</span>
+                  <span className="text-base font-bold text-emerald-700 dark:text-emerald-300">
+                    ₹{(parseFloat(paymentForm.feeAmount || 0) + parseFloat(paymentForm.openingBalanceAmount || 0)).toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Payment Mode
+                  </label>
+                  <select
+                    value={paymentForm.paymentMode}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentMode: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  >
+                    {PAYMENT_MODES.map((mode, i) => (
+                      <option key={i} value={mode}>{mode}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Remarks */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Payment Remarks
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Paid for October 2026, UPI ref #..."
+                    value={paymentForm.notes}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Payment Mode
-                </label>
-                <select
-                  value={paymentForm.paymentMode}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, paymentMode: e.target.value })}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                >
-                  {PAYMENT_MODES.map((mode, i) => (
-                    <option key={i} value={mode}>{mode}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Remarks */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Payment Remarks
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Paid for October 2026, UPI ref #..."
-                  value={paymentForm.notes}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
+              {/* Pinned Footer */}
+              <div className="p-3.5 sm:p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2 shrink-0 bg-slate-50 dark:bg-slate-900/90">
                 <button
                   type="button"
                   onClick={() => setShowPaymentModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingPayment}
-                  className="px-5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs disabled:opacity-50"
+                  className="px-5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs disabled:opacity-50 transition-colors"
                 >
                   {submittingPayment ? 'Recording...' : 'Record Payment & Log Income'}
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ======================================================== */}
       {/* MODAL 3: PAYMENT HISTORY & REVERT                       */}
       {/* ======================================================== */}
-      {showHistoryModal && historyStudent && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl shadow-xl border border-slate-200 dark:border-slate-800 my-8">
-            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+      {showHistoryModal && historyStudent && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex items-start sm:items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-auto shrink-0">
+            {/* Pinned Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900 z-10">
               <div>
                 <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
                   <History className="w-5 h-5 text-emerald-600" />
@@ -1632,19 +1646,20 @@ export default function MadrasaPage() {
                 </h3>
                 <div className="text-xs text-slate-500 mt-0.5">
                   Parent: <span className="font-bold text-slate-800 dark:text-slate-200">{historyStudent.parentName || historyStudent.member?.name}</span>
-                  <span className="ml-1 text-emerald-600">({historyStudent.studentsCount || 1} student(s))</span>
+                  <span className="ml-1 text-emerald-600 font-semibold">({historyStudent.studentsCount || 1} student(s))</span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowHistoryModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-4 sm:p-5 max-h-[60vh] overflow-y-auto space-y-3">
+            {/* Scrollable History List */}
+            <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3 overscroll-contain">
               {historyGroups.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 text-xs">
                   No payment records found for this parent.
@@ -1701,26 +1716,29 @@ export default function MadrasaPage() {
               )}
             </div>
 
-            <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            {/* Pinned Footer */}
+            <div className="p-3.5 sm:p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end shrink-0 bg-slate-50 dark:bg-slate-900/90">
               <button
                 type="button"
                 onClick={() => setShowHistoryModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-xl transition-colors"
               >
                 Close
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ======================================================== */}
       {/* MODAL 4: FULL DETAILS & 12-MONTH CALENDAR GRID          */}
       {/* ======================================================== */}
-      {showDetailModal && detailStudent && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl shadow-xl border border-slate-200 dark:border-slate-800 my-8">
-            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+      {showDetailModal && detailStudent && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex items-start sm:items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-auto shrink-0">
+            {/* Pinned Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900 z-10">
               <div>
                 <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
                   <GraduationCap className="w-5 h-5 text-emerald-600" />
@@ -1734,13 +1752,14 @@ export default function MadrasaPage() {
               <button
                 type="button"
                 onClick={() => setShowDetailModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-4 sm:p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+            {/* Scrollable Details Body */}
+            <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain">
               {/* Parent & Mahallu Link */}
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80">
                 <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
@@ -1892,7 +1911,8 @@ export default function MadrasaPage() {
               </div>
             </div>
 
-            <div className="pt-3 p-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            {/* Pinned Footer */}
+            <div className="p-3.5 sm:p-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0 bg-slate-50 dark:bg-slate-900/90">
               <button
                 type="button"
                 onClick={() => {
@@ -1934,14 +1954,15 @@ export default function MadrasaPage() {
                 <button
                   type="button"
                   onClick={() => setShowDetailModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-xl transition-colors"
                 >
                   Close
                 </button>
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
