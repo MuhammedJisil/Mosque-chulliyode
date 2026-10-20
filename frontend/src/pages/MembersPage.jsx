@@ -70,16 +70,13 @@ export default function MembersPage() {
     division: '',
     idNumber: '',
     hasFamily: false,
-    adultsCount: 2,
+    adultsCount: 0,
     childrenCount: 0,
     familyDetails: '',
     joiningDate: new Date().toISOString().split('T')[0],
     monthlyDonation: 100,
     openingBalance: 0,
     status: 'Active',
-    hasMadrasa: false,
-    madrasaChildrenCount: 1,
-    madrasaMonthlyFee: 200,
     notes: '',
   };
   const [formData, setFormData] = useState(initialForm);
@@ -94,7 +91,6 @@ export default function MembersPage() {
     month: currentMonth,
     year: currentYear,
     membershipAmount: 100,
-    madrasaAmount: 0,
     openingBalanceAmount: 0,
     paymentMode: PAYMENT_MODES[0],
     notes: '',
@@ -223,16 +219,13 @@ export default function MembersPage() {
       division: m.division || '',
       idNumber: m.idNumber || '',
       hasFamily: Boolean(m.hasFamily),
-      adultsCount: m.adultsCount !== undefined ? m.adultsCount : 2,
+      adultsCount: m.adultsCount !== undefined ? m.adultsCount : 0,
       childrenCount: m.childrenCount !== undefined ? m.childrenCount : 0,
       familyDetails: m.familyDetails || '',
       joiningDate: m.joiningDate ? new Date(m.joiningDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       monthlyDonation: m.monthlyDonation || 100,
       openingBalance: m.openingBalance || 0,
       status: m.status || 'Active',
-      hasMadrasa: Boolean(m.hasMadrasa),
-      madrasaChildrenCount: m.madrasaChildrenCount || 1,
-      madrasaMonthlyFee: m.madrasaMonthlyFee || 0,
       notes: m.notes || '',
     });
     setShowAddModal(true);
@@ -253,11 +246,13 @@ export default function MembersPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
+      const isFamily = Boolean(formData.hasFamily);
       const payload = {
         ...formData,
-        hasFamily: Boolean(formData.hasFamily || (formData.adultsCount > 0 || formData.childrenCount > 0)),
-        adultsCount: parseInt(formData.adultsCount) || 0,
-        childrenCount: parseInt(formData.childrenCount) || 0,
+        hasFamily: isFamily,
+        adultsCount: isFamily ? (parseInt(formData.adultsCount) || 0) : 0,
+        childrenCount: isFamily ? (parseInt(formData.childrenCount) || 0) : 0,
+        familyDetails: isFamily ? (formData.familyDetails || '') : '',
       };
       if (editingMember) {
         await api.put(`/api/members/${editingMember.id}`, payload);
@@ -307,13 +302,11 @@ export default function MembersPage() {
     setSelectedPaymentMonths(initialDue);
     const initialMonthsCount = initialDue.length;
     const initialMembership = initialMonthsCount * (m.monthlyDonation || 100);
-    const initialMadrasa = initialMonthsCount * (m.hasMadrasa ? (m.madrasaMonthlyFee || 0) : 0);
 
     setPaymentForm({
       month: initialDue[0] ? initialDue[0].month : currentMonth,
       year: initialDue[0] ? initialDue[0].year : currentYear,
       membershipAmount: initialMembership,
-      madrasaAmount: initialMadrasa,
       openingBalanceAmount: 0,
       paymentMode: 'Cash in Hand',
       notes: initialDue[0] ? `Subscription paid for ${initialDue[0].label}` : `Opening balance payment`,
@@ -351,13 +344,11 @@ export default function MembersPage() {
     const count = nextSelected.length;
     const rate = activePayingMember.monthlyDonation || 100;
     const newMembership = count * rate;
-    const newMadrasa = count * (activePayingMember.hasMadrasa ? (activePayingMember.madrasaMonthlyFee || 0) : 0);
     const labels = nextSelected.map(d => d.label).join(', ');
 
     setPaymentForm(prev => ({
       ...prev,
       membershipAmount: newMembership,
-      madrasaAmount: newMadrasa,
       notes: `Subscription paid for ${labels}`,
     }));
 
@@ -380,13 +371,11 @@ export default function MembersPage() {
     const count = nextSelected.length;
     const rate = activePayingMember.monthlyDonation || 100;
     const newMembership = count * rate;
-    const newMadrasa = count * (activePayingMember.hasMadrasa ? (activePayingMember.madrasaMonthlyFee || 0) : 0);
 
     const labels = nextSelected.map(d => d.label).join(', ');
     setPaymentForm(prev => ({
       ...prev,
       membershipAmount: newMembership,
-      madrasaAmount: newMadrasa,
       month: nextSelected[0] ? nextSelected[0].month : prev.month,
       year: nextSelected[0] ? nextSelected[0].year : prev.year,
       notes: count > 0 ? `Subscription paid for ${labels}` : prev.notes,
@@ -407,13 +396,11 @@ export default function MembersPage() {
     if (activePayingMember.dueMonths && activePayingMember.dueMonths.length > 0 && calculatedCount > 0) {
       const selected = activePayingMember.dueMonths.slice(0, calculatedCount);
       setSelectedPaymentMonths(selected);
-      const newMadrasa = selected.length * (activePayingMember.hasMadrasa ? (activePayingMember.madrasaMonthlyFee || 0) : 0);
       const labels = selected.map(d => d.label).join(', ');
 
       setPaymentForm(prev => ({
         ...prev,
         membershipAmount: val,
-        madrasaAmount: newMadrasa,
         month: selected[0] ? selected[0].month : prev.month,
         year: selected[0] ? selected[0].year : prev.year,
         notes: `Subscription paid for ${labels}`,
@@ -527,14 +514,13 @@ export default function MembersPage() {
 
   // Export Members List to PDF
   const handleExportPdf = () => {
-    const columns = ['Name', 'Phone', 'Monthly Fee', 'Madrasa Fee', 'Opening Balance', 'Status', 'Due Months', 'Total Due (₹)'];
+    const columns = ['Name', 'Phone', 'Area / Division', 'Monthly Fee', 'Opening Balance', 'Due Months', 'Total Due (₹)'];
     const rows = displayedMembers.map(m => [
       m.name,
       m.phone || '-',
+      m.division || '-',
       '₹' + m.monthlyDonation,
-      m.hasMadrasa ? `₹${m.madrasaMonthlyFee} (${m.madrasaChildrenCount} kid)` : '-',
       `₹${m.openingBalance || 0}${m.netOpeningBalanceDue > 0 ? ` (Due: ₹${m.netOpeningBalanceDue})` : ' (Clear)'}`,
-      m.status,
       m.dueMonthsCount > 0 ? `${m.dueMonthsCount} Mo (${m.dueMonthsNames || ''})` : 'Clear',
       '₹' + Number(m.totalDueAmount || 0).toLocaleString('en-IN'),
     ]);
@@ -561,12 +547,12 @@ export default function MembersPage() {
     const excelRows = displayedMembers.map(m => ({
       'Name': m.name,
       'Phone': m.phone,
+      'Area / Division': m.division || '',
       'Address': m.address || '',
       'Joining Date': new Date(m.joiningDate).toLocaleDateString('en-GB'),
       'Monthly Donation (INR)': m.monthlyDonation,
-      'Has Madrasa Kids': m.hasMadrasa ? 'Yes' : 'No',
-      'Madrasa Children Count': m.hasMadrasa ? m.madrasaChildrenCount : 0,
-      'Madrasa Monthly Fee (INR)': m.hasMadrasa ? m.madrasaMonthlyFee : 0,
+      'Opening Balance (INR)': m.openingBalance || 0,
+      'Opening Balance Due (INR)': m.netOpeningBalanceDue || 0,
       'Status': m.status,
       'Due Months Count': m.dueMonthsCount,
       'Which Months Due': m.dueMonthsNames || (m.dueMonths || []).map(x => x.label).join(', '),
@@ -601,13 +587,13 @@ export default function MembersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
-            Members & Madrasa Subscriptions
+            Mahallu Members
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-semibold">
               {displayedMembers.length} {displayedMembers.length === 1 ? 'Member' : 'Members'}
             </span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Monthly donation (₹100 default), madrasa fees, precise pending months due, family census & 1-click WhatsApp alerts
+            Monthly membership subscriptions (₹100 default), pending dues, family census & 1-click WhatsApp alerts
           </p>
         </div>
 
@@ -873,14 +859,10 @@ export default function MembersPage() {
                     <span className="font-bold text-slate-800 dark:text-slate-200">₹{m.monthlyDonation}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] uppercase text-slate-400 block font-semibold">Madrasa Fee</span>
-                    {m.hasMadrasa ? (
-                      <span className="font-bold text-amber-600 dark:text-amber-400">
-                        ₹{m.madrasaMonthlyFee} <span className="text-[10px] text-slate-400 font-normal">({m.madrasaChildrenCount} kid)</span>
-                      </span>
-                    ) : (
-                      <span className="text-slate-400">None</span>
-                    )}
+                    <span className="text-[10px] uppercase text-slate-400 block font-semibold">Area / Division</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                      {m.division || '-'}
+                    </span>
                   </div>
                   {(m.openingBalance || 0) > 0 && (
                     <div className="col-span-2">
@@ -951,7 +933,7 @@ export default function MembersPage() {
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/40 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">
                 <th className="py-3.5 px-4">Member Info</th>
                 <th className="py-3.5 px-4">Monthly Fee</th>
-                <th className="py-3.5 px-4">Madrasa Fee</th>
+                <th className="py-3.5 px-4">Area / Division</th>
                 <th className="py-3.5 px-4">Due Status & Pending Months</th>
                 <th className="py-3.5 px-4 text-center">WhatsApp</th>
                 <th className="py-3.5 px-4 text-center">Record Payment</th>
@@ -997,12 +979,6 @@ export default function MembersPage() {
                         </div>
                         <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-2 mt-1">
                           {m.phone && <span>📞 {m.phone}</span>}
-                          {m.division && (
-                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded font-medium">
-                              <Building className="w-2.5 h-2.5" />
-                              {m.division}
-                            </span>
-                          )}
                           {m.job && (
                             <span className="inline-flex items-center gap-1 text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
                               <Briefcase className="w-2.5 h-2.5" />
@@ -1026,20 +1002,13 @@ export default function MembersPage() {
                       </td>
 
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        {m.hasMadrasa ? (
-                          <div className="flex items-center gap-1.5">
-                            <GraduationCap className="w-3.5 h-3.5 text-amber-500" />
-                            <div>
-                              <span className="font-semibold text-amber-700 dark:text-amber-400">
-                                ₹{m.madrasaMonthlyFee}
-                              </span>
-                              <span className="text-[10px] text-slate-400 block">
-                                {m.madrasaChildrenCount} child(ren)
-                              </span>
-                            </div>
-                          </div>
+                        {m.division ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md font-medium text-xs">
+                            <Building className="w-3 h-3" />
+                            {m.division}
+                          </span>
                         ) : (
-                          <span className="text-[11px] text-slate-400">None</span>
+                          <span className="text-[11px] text-slate-400">-</span>
                         )}
                       </td>
 
@@ -1303,43 +1272,23 @@ export default function MembersPage() {
               </div>
 
               {/* Amounts */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Membership Amount (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={paymentForm.membershipAmount}
-                    onChange={(e) => handleMembershipAmountChange(e.target.value)}
-                    className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                  {selectedPaymentMonths.length > 0 && (
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 block">
-                      Paying for {selectedPaymentMonths.length} month(s)
-                    </span>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Madrasa Fee (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={paymentForm.madrasaAmount}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, madrasaAmount: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                  {activePayingMember.hasMadrasa && (
-                    <span className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 block">
-                      {activePayingMember.madrasaChildrenCount} kid(s) in madrasa
-                    </span>
-                  )}
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Membership Amount (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  required
+                  value={paymentForm.membershipAmount}
+                  onChange={(e) => handleMembershipAmountChange(e.target.value)}
+                  className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+                {selectedPaymentMonths.length > 0 && (
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                    Paying for {selectedPaymentMonths.length} month(s)
+                  </span>
+                )}
               </div>
 
               {/* Opening Balance Payment */}
@@ -1367,7 +1316,7 @@ export default function MembersPage() {
               <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
                 <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Total Collection:</span>
                 <span className="text-base font-bold text-emerald-700 dark:text-emerald-300">
-                  ₹{(parseFloat(paymentForm.membershipAmount || 0) + parseFloat(paymentForm.madrasaAmount || 0) + parseFloat(paymentForm.openingBalanceAmount || 0)).toLocaleString('en-IN')}
+                  ₹{(parseFloat(paymentForm.membershipAmount || 0) + parseFloat(paymentForm.openingBalanceAmount || 0)).toLocaleString('en-IN')}
                 </span>
               </div>
 
@@ -1535,11 +1484,11 @@ export default function MembersPage() {
                   <span className="text-[10px] text-slate-400"> / mo</span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80">
-                  <span className="text-[10px] uppercase text-slate-400 block font-semibold">Madrasa Fee</span>
-                  <span className="font-bold text-amber-600 dark:text-amber-400 text-sm">
-                    {detailMember.hasMadrasa ? `₹${detailMember.madrasaMonthlyFee}` : 'None'}
+                  <span className="text-[10px] uppercase text-slate-400 block font-semibold">Area / Division</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">
+                    {detailMember.division || '-'}
                   </span>
-                  {detailMember.hasMadrasa && <span className="text-[10px] text-slate-400 block">{detailMember.madrasaChildrenCount} children</span>}
+                  <span className="text-[10px] text-slate-400 block">{detailMember.status || 'Active'}</span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80">
                   <span className="text-[10px] uppercase text-slate-400 block font-semibold">Opening Balance</span>
@@ -1599,7 +1548,7 @@ export default function MembersPage() {
                       IconComp = CheckCircle2;
                     } else if (isDue) {
                       badgeClass = 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800/80 text-rose-700 dark:text-rose-300';
-                      statusLabel = `Unpaid (₹${detailMember.monthlyDonation + (detailMember.hasMadrasa ? detailMember.madrasaMonthlyFee : 0)})`;
+                      statusLabel = `Unpaid (₹${detailMember.monthlyDonation})`;
                       IconComp = AlertCircle;
                     } else if (isFuture) {
                       badgeClass = 'bg-slate-100/70 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-400';
@@ -1714,8 +1663,7 @@ export default function MembersPage() {
                         {g.receiptNo && <span className="ml-1.5 font-mono text-[10px] text-slate-400">({g.receiptNo})</span>}
                       </div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
-                        {g.membershipAmount > 0 && `Sub: ₹${g.membershipAmount} `}
-                        {g.madrasaAmount > 0 && `• Madrasa: ₹${g.madrasaAmount} `}
+                        {g.membershipAmount > 0 && `Membership: ₹${g.membershipAmount} `}
                         {g.openingBalanceAmount > 0 && `• Opening Bal: ₹${g.openingBalanceAmount}`}
                       </div>
                       {g.notes && (
@@ -1935,50 +1883,6 @@ export default function MembersPage() {
                 </div>
               </div>
 
-              {/* Madrasa Section */}
-              <div className="p-4 rounded-xl border border-amber-200/70 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20 space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.hasMadrasa}
-                    onChange={(e) => setFormData({ ...formData, hasMadrasa: e.target.checked })}
-                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Member has Children enrolled in Madrasa
-                  </span>
-                </label>
-
-                {formData.hasMadrasa && (
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
-                        Number of Children
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={formData.madrasaChildrenCount}
-                        onChange={(e) => setFormData({ ...formData, madrasaChildrenCount: parseInt(e.target.value) || 1 })}
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
-                        Monthly Madrasa Fee (₹)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={formData.madrasaMonthlyFee}
-                        onChange={(e) => setFormData({ ...formData, madrasaMonthlyFee: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {/* Family Members & Survey Section (Census) */}
               <div className="p-4 rounded-xl border border-blue-200/70 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-950/20 space-y-3">
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -2043,7 +1947,7 @@ export default function MembersPage() {
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Optional remarks, names of students in madrasa, etc..."
+                  placeholder="Optional remarks, notes or family background..."
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"

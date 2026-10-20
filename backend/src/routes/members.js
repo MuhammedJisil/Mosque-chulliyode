@@ -44,7 +44,7 @@ function calculateMemberDue(member, payments) {
     }
   }
 
-  const monthlyTotal = (member.monthlyDonation || 0) + (member.hasMadrasa ? (member.madrasaMonthlyFee || 0) : 0);
+  const monthlyTotal = parseFloat(member.monthlyDonation) || 0;
   const monthsDueAmount = dueMonths.length * monthlyTotal;
 
   // Calculate Member Opening Balance (Past Arrears from manual records)
@@ -229,6 +229,7 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Name is required.' });
     }
 
+    const isFamilyChecked = Boolean(hasFamily);
     const newMember = await prisma.member.create({
       data: {
         name,
@@ -237,10 +238,10 @@ router.post('/', authMiddleware, async (req, res) => {
         job: job || '',
         division: division || '',
         idNumber: idNumber || '',
-        hasFamily: Boolean(hasFamily),
-        adultsCount: parseInt(adultsCount) || 0,
-        childrenCount: parseInt(childrenCount) || 0,
-        familyDetails: familyDetails || '',
+        hasFamily: isFamilyChecked,
+        adultsCount: isFamilyChecked ? (parseInt(adultsCount) || 0) : 0,
+        childrenCount: isFamilyChecked ? (parseInt(childrenCount) || 0) : 0,
+        familyDetails: isFamilyChecked ? (familyDetails || '') : '',
         joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
         monthlyDonation: parseFloat(monthlyDonation) || 100,
         openingBalance: parseFloat(openingBalance) || 0,
@@ -287,28 +288,44 @@ router.put('/:id', authMiddleware, async (req, res) => {
       notes
     } = req.body;
 
+    const dataToUpdate = {
+      name,
+      address,
+      phone: phone !== undefined ? String(phone).trim() : undefined,
+      job: job !== undefined ? job : undefined,
+      division: division !== undefined ? division : undefined,
+      idNumber: idNumber !== undefined ? idNumber : undefined,
+      ...(joiningDate ? { joiningDate: new Date(joiningDate) } : {}),
+      ...(monthlyDonation !== undefined ? { monthlyDonation: parseFloat(monthlyDonation) } : {}),
+      ...(openingBalance !== undefined ? { openingBalance: parseFloat(openingBalance) } : {}),
+      ...(status !== undefined ? { status } : {}),
+      ...(hasMadrasa !== undefined ? { hasMadrasa: Boolean(hasMadrasa) } : {}),
+      ...(madrasaChildrenCount !== undefined ? { madrasaChildrenCount: parseInt(madrasaChildrenCount) } : {}),
+      ...(madrasaMonthlyFee !== undefined ? { madrasaMonthlyFee: parseFloat(madrasaMonthlyFee) } : {}),
+      notes,
+    };
+
+    if (hasFamily !== undefined) {
+      const isFamily = Boolean(hasFamily);
+      dataToUpdate.hasFamily = isFamily;
+      if (!isFamily) {
+        dataToUpdate.adultsCount = 0;
+        dataToUpdate.childrenCount = 0;
+        dataToUpdate.familyDetails = '';
+      } else {
+        if (adultsCount !== undefined) dataToUpdate.adultsCount = parseInt(adultsCount) || 0;
+        if (childrenCount !== undefined) dataToUpdate.childrenCount = parseInt(childrenCount) || 0;
+        if (familyDetails !== undefined) dataToUpdate.familyDetails = familyDetails;
+      }
+    } else {
+      if (adultsCount !== undefined) dataToUpdate.adultsCount = parseInt(adultsCount) || 0;
+      if (childrenCount !== undefined) dataToUpdate.childrenCount = parseInt(childrenCount) || 0;
+      if (familyDetails !== undefined) dataToUpdate.familyDetails = familyDetails;
+    }
+
     const updated = await prisma.member.update({
       where: { id: parseInt(req.params.id) },
-      data: {
-        name,
-        address,
-        phone: phone !== undefined ? String(phone).trim() : undefined,
-        job: job !== undefined ? job : undefined,
-        division: division !== undefined ? division : undefined,
-        idNumber: idNumber !== undefined ? idNumber : undefined,
-        hasFamily: hasFamily !== undefined ? Boolean(hasFamily) : undefined,
-        adultsCount: adultsCount !== undefined ? (parseInt(adultsCount) || 0) : undefined,
-        childrenCount: childrenCount !== undefined ? (parseInt(childrenCount) || 0) : undefined,
-        familyDetails: familyDetails !== undefined ? familyDetails : undefined,
-        ...(joiningDate ? { joiningDate: new Date(joiningDate) } : {}),
-        ...(monthlyDonation !== undefined ? { monthlyDonation: parseFloat(monthlyDonation) } : {}),
-        ...(openingBalance !== undefined ? { openingBalance: parseFloat(openingBalance) } : {}),
-        ...(status !== undefined ? { status } : {}),
-        ...(hasMadrasa !== undefined ? { hasMadrasa: Boolean(hasMadrasa) } : {}),
-        ...(madrasaChildrenCount !== undefined ? { madrasaChildrenCount: parseInt(madrasaChildrenCount) } : {}),
-        ...(madrasaMonthlyFee !== undefined ? { madrasaMonthlyFee: parseFloat(madrasaMonthlyFee) } : {}),
-        notes,
-      }
+      data: dataToUpdate
     });
 
     res.json({

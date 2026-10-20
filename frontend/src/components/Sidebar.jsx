@@ -4,6 +4,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Users,
+  GraduationCap,
   UserCheck,
   X,
   HeartHandshake,
@@ -16,7 +17,8 @@ export default function Sidebar({ activeTab, onTabChange, isOpen, onClose }) {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'income', label: 'Income Management', icon: ArrowDownLeft },
     { id: 'expense', label: 'Expense Management', icon: ArrowUpRight },
-    { id: 'members', label: 'Members & Madrasa', icon: Users },
+    { id: 'members', label: 'Mahallu Members', icon: Users },
+    { id: 'madrasa', label: 'Madrasa Students', icon: GraduationCap },
     { id: 'food-schedule', label: 'Food Duty (ഭക്ഷണപ്പടി)', icon: Utensils },
     { id: 'staff', label: 'Staff & Payroll', icon: UserCheck },
   ];

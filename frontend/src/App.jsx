@@ -9,6 +9,7 @@ import DashboardPage from './pages/DashboardPage';
 import IncomePage from './pages/IncomePage';
 import ExpensePage from './pages/ExpensePage';
 import MembersPage from './pages/MembersPage';
+import MadrasaPage from './pages/MadrasaPage';
 import StaffPage from './pages/StaffPage';
 import FoodSchedulePage from './pages/FoodSchedulePage';
 
@@ -42,6 +43,8 @@ function MainApp() {
         return <ExpensePage />;
       case 'members':
         return <MembersPage />;
+      case 'madrasa':
+        return <MadrasaPage />;
       case 'food-schedule':
         return <FoodSchedulePage />;
       case 'staff':

@@ -9,7 +9,7 @@ const { isConfigured, uploadToCloudinary } = require('../utils/cloudinary');
 // Get all Income records with filters
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { search, category, paymentMode, month, year, startDate, endDate, sort = 'newest', isMemberPayment, source } = req.query;
+    const { search, category, paymentMode, month, year, startDate, endDate, sort = 'newest', isMemberPayment, isMadrasaFee, source } = req.query;
 
     const where = {};
 
@@ -19,6 +19,13 @@ router.get('/', authMiddleware, async (req, res) => {
         { memberPaymentId: { not: null } },
         { description: { contains: 'Monthly subscription' } },
         { description: { contains: 'RCP-' } },
+      ];
+    } else if (isMadrasaFee === 'true' || source === 'madrasa') {
+      where.OR = [
+        { category: 'Madrasa Monthly Fee' },
+        { madrasaPaymentId: { not: null } },
+        { description: { contains: 'Madrasa fee' } },
+        { description: { contains: 'RCP-MAD-' } },
       ];
     }
 

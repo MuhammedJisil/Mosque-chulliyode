@@ -2,6 +2,7 @@
 
 export const DEFAULT_INCOME_CATEGORIES = [
   'Member Monthly Payment',
+  'Madrasa Monthly Fee',
   'Donation',
   'Donation Box Collection',
   'Ramadan Collection',

@@ -14,6 +14,7 @@ const staffRoutes = require('./routes/staff');
 const categoryRoutes = require('./routes/categories');
 const backupRoutes = require('./routes/backup');
 const foodDutyRoutes = require('./routes/foodDuties');
+const madrasaRoutes = require('./routes/madrasa');
 
 const app = express();
 
@@ -102,6 +103,7 @@ app.use('/api/staff', staffRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/food-duties', foodDutyRoutes);
+app.use('/api/madrasa', madrasaRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

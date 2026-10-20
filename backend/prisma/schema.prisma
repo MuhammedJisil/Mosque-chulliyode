@@ -27,10 +27,12 @@ model Income {
   description     String?
   customFields    String?  // JSON stringified array of {name, value}
   proofImage      String?  // Image path or base64
-  receiptNo       String?  // Shared receipt number or voucher number
-  memberPaymentId Int?     // Link to MemberPayment if synced
-  memberId        Int?     // Link to Member if synced
-  date            DateTime @default(now())
+  receiptNo        String?  // Shared receipt number or voucher number
+  memberPaymentId  Int?     // Link to MemberPayment if synced
+  memberId         Int?     // Link to Member if synced
+  madrasaPaymentId Int?     // Link to MadrasaPayment if synced
+  studentId        Int?     // Link to MadrasaStudent if synced
+  date             DateTime @default(now())
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -75,8 +77,9 @@ model Member {
   notes                String?
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
-  payments             MemberPayment[]
-  foodDuties           FoodDuty[]
+  payments        MemberPayment[]
+  foodDuties      FoodDuty[]
+  madrasaStudents MadrasaStudent[]
 }
 
 model MemberPayment {
@@ -153,4 +156,40 @@ model FoodDuty {
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model MadrasaStudent {
+  id             Int              @id @default(autoincrement())
+  studentName    String
+  admissionNo    String?          // Roll / Admission No
+  memberId       Int?             // Parent / Guardian Member (optional link)
+  member         Member?          @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  parentName     String?          // Parent or Guardian Name
+  parentPhone    String?          @default("")
+  division       String?          // Ward / Division / Area
+  classLevel     String?          @default("Class 1") // Class 1, Class 2, ...
+  monthlyFee     Float            @default(200.0)
+  openingBalance Float            @default(0.0) // Past fee arrears
+  admissionDate  DateTime         @default(now())
+  status         String           @default("Active") // Active or Inactive
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  payments       MadrasaPayment[]
+}
+
+model MadrasaPayment {
+  id                   Int            @id @default(autoincrement())
+  studentId            Int
+  student              MadrasaStudent @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  month                Int            // 1-12 (or 0 for opening balance payment)
+  year                 Int            // e.g. 2026
+  feeAmount            Float          @default(0.0)
+  openingBalanceAmount Float          @default(0.0)
+  totalAmount          Float
+  paymentMode          String         @default("Cash in Hand")
+  paymentDate          DateTime       @default(now())
+  receiptNo            String?
+  notes                String?
+  createdAt            DateTime       @default(now())
 }

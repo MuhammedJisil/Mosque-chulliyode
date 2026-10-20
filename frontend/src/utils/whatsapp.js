@@ -27,19 +27,59 @@ export const openWhatsAppDueReminder = (member) => {
     message += `• *Monthly Membership:* ₹${member.monthlyDonation || 0}/mo\n`;
   }
 
-  if (member.hasMadrasa && member.madrasaMonthlyFee > 0) {
-    message += `• *Madrasa Children:* ${member.madrasaChildrenCount || 1} child(ren)\n`;
-    message += `• *Madrasa Monthly Fee:* ₹${member.madrasaMonthlyFee}/mo\n`;
-  }
-
   if ((member.netOpeningBalanceDue || 0) > 0) {
-    message += `• *Opening Balance:* ₹${member.netOpeningBalanceDue}\n`;
+    message += `• *Opening Balance Arrears:* ₹${member.netOpeningBalanceDue}\n`;
   }
 
   message += `\n💵 *Total Outstanding Due:* *₹${member.totalDueAmount || 0}*\n\n`;
-  message += `Kindly remit your contribution at your earliest convenience to support the Masjid expenses and Madrasa operations.\n\n`;
+  message += `Kindly remit your contribution at your earliest convenience to support the Masjid operations.\n\n`;
   message += `You may pay via UPI / GPay / PhonePe to the Masjid QR code or hand over directly to the Cashier at the Masjid office.\n\n`;
   message += `*JazakAllahu Khairan wa Ahsanal Jaza!* 🤲\n_Masjid al noor — sirajul huda sangam chulliyode_`;
+
+  const encoded = encodeURIComponent(message);
+  const url = `https://wa.me/${cleanPhone}?text=${encoded}`;
+
+  window.open(url, '_blank');
+};
+
+/**
+ * Generates a WhatsApp share URL and prefilled reminder message for Madrasa students with fee dues.
+ */
+export const openWhatsAppMadrasaDueReminder = (student) => {
+  const phone = student.parentPhone || student.member?.phone;
+  if (!phone) {
+    alert('No phone number registered for this student or parent/guardian.');
+    return;
+  }
+
+  let cleanPhone = phone.replace(/[^0-9]/g, '');
+  if (cleanPhone.length === 10) {
+    cleanPhone = `91${cleanPhone}`;
+  }
+
+  const monthsText = student.dueMonths && student.dueMonths.length > 0
+    ? student.dueMonths.map(m => m.label).join(', ')
+    : `${student.dueMonthsCount || 0} Month(s)`;
+
+  const parentName = student.parentName || student.member?.name || 'Parent/Guardian';
+
+  let message = `*Assalamu Alaikum wa Rahmatullahi wa Barakatuhu, ${parentName}* 🕌📚\n\n`;
+  message += `This is a reminder from *Madrasa Sirajul Huda (Masjid al noor, Chulliyode)* regarding Madrasa fees for student: *${student.studentName}* (${student.classLevel || 'Class'})\n\n`;
+  message += `📌 *Madrasa Fee Due Details:*\n`;
+
+  if (student.dueMonthsCount > 0) {
+    message += `• *Pending Months:* ${student.dueMonthsCount} month(s) (${monthsText})\n`;
+    message += `• *Monthly Fee:* ₹${student.monthlyFee || 0}/mo\n`;
+  }
+
+  if ((student.netOpeningBalanceDue || 0) > 0) {
+    message += `• *Fee Arrears / Opening Balance:* ₹${student.netOpeningBalanceDue}\n`;
+  }
+
+  message += `\n💵 *Total Outstanding Fee:* *₹${student.totalDueAmount || 0}*\n\n`;
+  message += `Kindly remit the Madrasa fees at your earliest convenience to support our teachers and madrasa activities.\n\n`;
+  message += `Payment can be made via UPI / Cash at the Madrasa / Masjid office.\n\n`;
+  message += `*JazakAllahu Khairan wa Ahsanal Jaza!* 🤲\n_Madrasa Sirajul Huda — Masjid al noor Chulliyode_`;
 
   const encoded = encodeURIComponent(message);
   const url = `https://wa.me/${cleanPhone}?text=${encoded}`;

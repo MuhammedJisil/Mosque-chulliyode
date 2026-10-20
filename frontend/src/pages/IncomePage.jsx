@@ -42,6 +42,7 @@ export default function IncomePage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [memberPaymentsOnly, setMemberPaymentsOnly] = useState(false);
+  const [madrasaFeesOnly, setMadrasaFeesOnly] = useState(false);
   const [sortOrder, setSortOrder] = useState('oldest'); // 'oldest' or 'newest'
 
   // Custom Categories list from API
@@ -85,8 +86,9 @@ export default function IncomePage() {
         year: selectedYear !== 'All' ? selectedYear : undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
-        source: memberPaymentsOnly ? 'members' : undefined,
+        source: memberPaymentsOnly ? 'members' : (madrasaFeesOnly ? 'madrasa' : undefined),
         isMemberPayment: memberPaymentsOnly ? 'true' : undefined,
+        isMadrasaFee: madrasaFeesOnly ? 'true' : undefined,
         sort: sortOrder,
       };
       const res = await api.get('/api/income', params);
@@ -118,7 +120,7 @@ export default function IncomePage() {
 
   useEffect(() => {
     fetchIncomes();
-  }, [search, selectedCategory, selectedPaymentMode, selectedMonth, selectedYear, startDate, endDate, memberPaymentsOnly, sortOrder]);
+  }, [search, selectedCategory, selectedPaymentMode, selectedMonth, selectedYear, startDate, endDate, memberPaymentsOnly, madrasaFeesOnly, sortOrder]);
 
   const handleOpenAdd = () => {
     setEditingItem(null);
@@ -371,7 +373,11 @@ export default function IncomePage() {
             {/* Quick Filter: Member Monthly Payments */}
             <button
               type="button"
-              onClick={() => setMemberPaymentsOnly(!memberPaymentsOnly)}
+              onClick={() => {
+                const next = !memberPaymentsOnly;
+                setMemberPaymentsOnly(next);
+                if (next) setMadrasaFeesOnly(false);
+              }}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${
                 memberPaymentsOnly
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
@@ -380,6 +386,24 @@ export default function IncomePage() {
             >
               <span>👥</span>
               <span>Member Monthly Payments {memberPaymentsOnly ? '✓' : ''}</span>
+            </button>
+
+            {/* Quick Filter: Madrasa Monthly Fees */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !madrasaFeesOnly;
+                setMadrasaFeesOnly(next);
+                if (next) setMemberPaymentsOnly(false);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                madrasaFeesOnly
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100'
+              }`}
+            >
+              <span>📚</span>
+              <span>Madrasa Fees {madrasaFeesOnly ? '✓' : ''}</span>
             </button>
 
             {/* Date Range Pickers */}
@@ -398,7 +422,7 @@ export default function IncomePage() {
                 onChange={(e) => setEndDate(e.target.value)}
                 className="px-2 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none"
               />
-              {(startDate || endDate || memberPaymentsOnly || selectedCategory !== 'All' || selectedPaymentMode !== 'All' || selectedMonth !== 'All' || search) && (
+              {(startDate || endDate || memberPaymentsOnly || madrasaFeesOnly || selectedCategory !== 'All' || selectedPaymentMode !== 'All' || selectedMonth !== 'All' || search) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -410,6 +434,7 @@ export default function IncomePage() {
                     setStartDate('');
                     setEndDate('');
                     setMemberPaymentsOnly(false);
+                    setMadrasaFeesOnly(false);
                   }}
                   className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
                 >
