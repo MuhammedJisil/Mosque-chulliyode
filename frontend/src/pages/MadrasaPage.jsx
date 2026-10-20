@@ -6,6 +6,7 @@ import {
   Download,
   Phone,
   Building,
+  Briefcase,
   Calendar,
   CheckCircle2,
   AlertCircle,
@@ -13,7 +14,6 @@ import {
   Trash2,
   IndianRupee,
   Users,
-  ChevronDown,
   Check,
   X,
   FileSpreadsheet,
@@ -22,9 +22,7 @@ import {
   History,
   Undo2,
   GraduationCap,
-  BookOpen,
   Info,
-  Clock,
   UserCheck,
   Receipt
 } from 'lucide-react';
@@ -40,21 +38,15 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-const STANDARD_CLASSES = [
-  'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5',
-  'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10',
-  'Hifz', 'Pre-Primary', 'Special Class'
-];
-
 export default function MadrasaPage() {
   const { toast } = useToast();
+
   const [students, setStudents] = useState([]);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedDivision, setSelectedDivision] = useState('All');
-  const [selectedClass, setSelectedClass] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
 
   // Modals
@@ -71,19 +63,19 @@ export default function MadrasaPage() {
   const [detailStudent, setDetailStudent] = useState(null);
   const [detailYear, setDetailYear] = useState(new Date().getFullYear());
 
-  // Parent Member Search inside Add/Edit modal
+  // Search inside Add/Edit modal for Mahallu Member
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
   const [showMemberDropdown, setShowMemberDropdown] = useState(false);
 
-  // Form State for Add / Edit Student
+  // Form State: Simplified Parent/Member model
   const initialForm = {
     memberId: '',
-    studentName: '',
-    admissionNo: '',
-    classLevel: 'Class 1',
     parentName: '',
     parentPhone: '',
+    job: '',
     division: '',
+    studentsCount: 1,
+    feePerStudent: 200,
     monthlyFee: 200,
     openingBalance: 0,
     admissionDate: new Date().toISOString().split('T')[0],
@@ -124,7 +116,7 @@ export default function MadrasaPage() {
 
   useEffect(() => {
     fetchStudents();
-  }, [debouncedSearch, selectedDivision, selectedClass]);
+  }, [debouncedSearch, selectedDivision]);
 
   useEffect(() => {
     fetchMembersList();
@@ -136,14 +128,13 @@ export default function MadrasaPage() {
       const params = new URLSearchParams();
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (selectedDivision !== 'All') params.append('division', selectedDivision);
-      if (selectedClass !== 'All') params.append('classLevel', selectedClass);
 
       const res = await api.get(`/api/madrasa?${params.toString()}`);
       if (res.success) {
         setStudents(res.students || []);
       }
     } catch (err) {
-      toast.error('Failed to load madrasa students');
+      toast.error('Failed to load madrasa records');
     } finally {
       setLoading(false);
     }
@@ -164,22 +155,14 @@ export default function MadrasaPage() {
   const divisions = useMemo(() => {
     const set = new Set();
     students.forEach((s) => {
-      if (s.division && s.division.trim()) set.add(s.division.trim());
+      const div = s.division || s.member?.division;
+      if (div && div.trim()) set.add(div.trim());
     });
     members.forEach((m) => {
       if (m.division && m.division.trim()) set.add(m.division.trim());
     });
     return Array.from(set).sort();
   }, [students, members]);
-
-  // Distinct class levels list
-  const classLevels = useMemo(() => {
-    const set = new Set(STANDARD_CLASSES);
-    students.forEach((s) => {
-      if (s.classLevel && s.classLevel.trim()) set.add(s.classLevel.trim());
-    });
-    return Array.from(set);
-  }, [students]);
 
   // Filtered by status
   const displayedStudents = useMemo(() => {
@@ -193,20 +176,24 @@ export default function MadrasaPage() {
 
   // Overall Statistics
   const stats = useMemo(() => {
-    const totalStudents = students.length;
-    const activeStudents = students.filter(s => s.status === 'Active').length;
+    const totalParents = students.length;
+    const activeParents = students.filter(s => s.status === 'Active').length;
+    const totalKids = students
+      .filter(s => s.status === 'Active')
+      .reduce((acc, s) => acc + (s.studentsCount || 1), 0);
     const totalMonthlyFeePotential = students
       .filter(s => s.status === 'Active')
       .reduce((acc, s) => acc + (s.monthlyFee || 0), 0);
     const totalDuesAmount = students.reduce((acc, s) => acc + (s.totalDueAmount || 0), 0);
-    const studentsWithDues = students.filter(s => (s.dueMonthsCount > 0 || (s.netOpeningBalanceDue || 0) > 0)).length;
+    const parentsWithDues = students.filter(s => (s.dueMonthsCount > 0 || (s.netOpeningBalanceDue || 0) > 0)).length;
 
     return {
-      totalStudents,
-      activeStudents,
+      totalParents,
+      activeParents,
+      totalKids,
       totalMonthlyFeePotential,
       totalDuesAmount,
-      studentsWithDues,
+      parentsWithDues,
     };
   }, [students]);
 
@@ -218,21 +205,55 @@ export default function MadrasaPage() {
       m.name?.toLowerCase().includes(q) ||
       m.phone?.includes(q) ||
       m.division?.toLowerCase().includes(q) ||
+      m.job?.toLowerCase().includes(q) ||
       String(m.idNumber || '').includes(q)
     ).slice(0, 20);
   }, [members, memberSearchTerm]);
 
-  // Select a member as parent
+  // Select a member as parent -> Auto-prefill name, phone, job, division, joining date
   const handleSelectParentMember = (m) => {
+    const count = formData.studentsCount || 1;
+    const perStudent = formData.feePerStudent || 200;
+    const autoFee = count * perStudent;
+
+    const joiningDateStr = m.joiningDate
+      ? new Date(m.joiningDate).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+
     setFormData(prev => ({
       ...prev,
       memberId: m.id,
       parentName: m.name || '',
       parentPhone: m.phone || '',
-      division: m.division || prev.division,
+      job: m.job || '',
+      division: m.division || '',
+      admissionDate: joiningDateStr,
+      monthlyFee: autoFee,
     }));
     setMemberSearchTerm(`${m.name}${m.phone ? ` (${m.phone})` : ''}`);
     setShowMemberDropdown(false);
+  };
+
+  // When number of students changes, automatically recalculate monthly fee
+  const handleStudentsCountChange = (countVal) => {
+    const count = Math.max(1, parseInt(countVal) || 1);
+    const rate = parseFloat(formData.feePerStudent) || 200;
+    setFormData(prev => ({
+      ...prev,
+      studentsCount: count,
+      monthlyFee: count * rate,
+    }));
+  };
+
+  // When fee per student changes, auto recalculate monthly fee
+  const handleFeePerStudentChange = (rateVal) => {
+    const rate = parseFloat(rateVal) || 0;
+    const count = parseInt(formData.studentsCount) || 1;
+    setFormData(prev => ({
+      ...prev,
+      feePerStudent: rateVal,
+      monthlyFee: count * rate,
+    }));
   };
 
   const handleOpenAddModal = () => {
@@ -247,12 +268,12 @@ export default function MadrasaPage() {
     setEditingStudent(s);
     setFormData({
       memberId: s.memberId || '',
-      studentName: s.studentName || '',
-      admissionNo: s.admissionNo || '',
-      classLevel: s.classLevel || 'Class 1',
       parentName: s.parentName || s.member?.name || '',
       parentPhone: s.parentPhone || s.member?.phone || '',
+      job: s.job || s.member?.job || '',
       division: s.division || s.member?.division || '',
+      studentsCount: s.studentsCount || 1,
+      feePerStudent: s.feePerStudent || (s.studentsCount ? Math.round(s.monthlyFee / s.studentsCount) : 200),
       monthlyFee: s.monthlyFee !== undefined ? s.monthlyFee : 200,
       openingBalance: s.openingBalance || 0,
       admissionDate: s.admissionDate ? new Date(s.admissionDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
@@ -264,21 +285,21 @@ export default function MadrasaPage() {
     setShowAddModal(true);
   };
 
-  const handleDeleteStudent = async (id) => {
-    if (!window.confirm('Are you sure you want to remove this student and their madrasa fee records? Linked income records will also be removed.')) return;
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to remove this madrasa record? All linked monthly fee and income entries will be deleted.')) return;
     try {
       await api.del(`/api/madrasa/${id}`);
-      toast.success('Student removed successfully');
+      toast.success('Madrasa record removed successfully');
       fetchStudents();
     } catch (err) {
-      toast.error(err.message || 'Failed to delete student');
+      toast.error(err.message || 'Failed to delete record');
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.studentName.trim()) {
-      toast.error('Student name is required');
+    if (!formData.parentName.trim()) {
+      toast.error('Parent / Member name is required');
       return;
     }
     setSubmitting(true);
@@ -286,21 +307,23 @@ export default function MadrasaPage() {
       const payload = {
         ...formData,
         memberId: formData.memberId ? parseInt(formData.memberId) : null,
+        studentsCount: parseInt(formData.studentsCount) || 1,
+        feePerStudent: parseFloat(formData.feePerStudent) || 200,
         monthlyFee: parseFloat(formData.monthlyFee) || 0,
         openingBalance: parseFloat(formData.openingBalance) || 0,
       };
 
       if (editingStudent) {
         await api.put(`/api/madrasa/${editingStudent.id}`, payload);
-        toast.success('Student details updated successfully');
+        toast.success('Madrasa record updated successfully');
       } else {
         await api.post('/api/madrasa', payload);
-        toast.success('New student registered successfully');
+        toast.success('New madrasa record added successfully');
       }
       setShowAddModal(false);
       fetchStudents();
     } catch (err) {
-      toast.error(err.message || 'Failed to save student details');
+      toast.error(err.message || 'Failed to save record');
     } finally {
       setSubmitting(false);
     }
@@ -349,7 +372,7 @@ export default function MadrasaPage() {
     }
     const alreadyPaid = (activePayingStudent.payments || []).some(p => p.month === mNum && p.year === yNum);
     if (alreadyPaid) {
-      toast.error(`${activePayingStudent.studentName} has already paid for ${MONTH_NAMES[mNum - 1]} ${yNum}.`);
+      toast.error(`Already paid for ${MONTH_NAMES[mNum - 1]} ${yNum}.`);
       return;
     }
 
@@ -440,7 +463,8 @@ export default function MadrasaPage() {
       };
       await api.post(`/api/madrasa/${activePayingStudent.id}/pay`, payload);
       setShowPaymentModal(false);
-      toast.success(`Payment recorded for ${activePayingStudent.studentName} and logged in Income!`);
+      const name = activePayingStudent.parentName || activePayingStudent.member?.name || 'Member';
+      toast.success(`Payment recorded for ${name} and synced to Income!`);
       fetchStudents();
     } catch (err) {
       toast.error(err.message || 'Failed to record payment');
@@ -510,7 +534,7 @@ export default function MadrasaPage() {
   // Revert / Delete Madrasa Payment
   const handleRevertPayment = async (paymentId, amount, label) => {
     if (!historyStudent) return;
-    const confirmMsg = `Are you sure you want to REVERT this payment?\n\n• Receipt / Period: ${label}\n• Total Amount: ₹${amount}\n\nThis will remove the payment, re-mark the months as unpaid, and delete the linked income record from Treasury.`;
+    const confirmMsg = `Are you sure you want to REVERT this payment?\n\n• Receipt / Period: ${label}\n• Total Amount: ₹${amount}\n\nThis will re-mark the months as unpaid and delete the linked income record from Treasury.`;
     if (!window.confirm(confirmMsg)) return;
 
     try {
@@ -538,25 +562,27 @@ export default function MadrasaPage() {
 
   // Export PDF
   const handleExportPdf = () => {
-    const columns = ['Student Name', 'Class', 'Parent / Guardian', 'Phone', 'Area / Division', 'Monthly Fee', 'Opening Balance', 'Due Months', 'Total Due (₹)'];
-    const rows = displayedStudents.map(s => [
-      s.studentName + (s.admissionNo ? ` (#${s.admissionNo})` : ''),
-      s.classLevel || '-',
-      s.parentName || s.member?.name || '-',
-      s.parentPhone || s.member?.phone || '-',
-      s.division || s.member?.division || '-',
-      '₹' + (s.monthlyFee || 0),
-      `₹${s.openingBalance || 0}${s.netOpeningBalanceDue > 0 ? ` (Due: ₹${s.netOpeningBalanceDue})` : ' (Clear)'}`,
-      s.dueMonthsCount > 0 ? `${s.dueMonthsCount} Mo (${s.dueMonthsNames || ''})` : 'Clear',
-      '₹' + Number(s.totalDueAmount || 0).toLocaleString('en-IN'),
-    ]);
+    const columns = ['Parent / Member', 'Phone', 'Area / Division', 'Job', 'Students Count', 'Monthly Fee', 'Opening Balance', 'Due Months', 'Total Due (₹)'];
+    const rows = displayedStudents.map(s => {
+      const parentName = s.parentName || s.member?.name || '-';
+      const phone = s.parentPhone || s.member?.phone || '-';
+      const division = s.division || s.member?.division || '-';
+      const job = s.job || s.member?.job || '-';
+      const count = `${s.studentsCount || 1} student(s)`;
+      const monthly = '₹' + (s.monthlyFee || 0);
+      const openBal = `₹${s.openingBalance || 0}${s.netOpeningBalanceDue > 0 ? ` (Due: ₹${s.netOpeningBalanceDue})` : ' (Clear)'}`;
+      const dueMonths = s.dueMonthsCount > 0 ? `${s.dueMonthsCount} Mo (${s.dueMonthsNames || ''})` : 'Clear';
+      const totalDue = '₹' + Number(s.totalDueAmount || 0).toLocaleString('en-IN');
+
+      return [parentName, phone, division, job, count, monthly, openBal, dueMonths, totalDue];
+    });
 
     const totalDues = displayedStudents.reduce((acc, s) => acc + (s.totalDueAmount || 0), 0);
     const totalOpeningBalDue = displayedStudents.reduce((acc, s) => acc + (s.netOpeningBalanceDue || 0), 0);
 
     exportToPdf({
-      title: 'Madrasa Sirajul Huda - Students & Monthly Fee Due Report',
-      subtitle: `Masjid al noor, Chulliyode • Total Students: ${displayedStudents.length}`,
+      title: 'Madrasa Sirajul Huda - Monthly Fee Due Report',
+      subtitle: `Masjid al noor, Chulliyode • Total Families / Records: ${displayedStudents.length}`,
       dateRange: 'Current Status',
       columns,
       rows,
@@ -564,20 +590,19 @@ export default function MadrasaPage() {
         { label: 'Total Opening Balance Due:', value: '₹' + Number(totalOpeningBalDue).toLocaleString('en-IN') },
         { label: 'Total Outstanding Madrasa Fees:', value: '₹' + Number(totalDues).toLocaleString('en-IN'), bold: true, highlight: true }
       ],
-      fileName: 'Madrasa_Sirajul_Huda_Students_Due_Report.pdf'
+      fileName: 'Madrasa_Monthly_Fees_Due_Report.pdf'
     });
   };
 
   // Export Excel
   const handleExportExcel = () => {
     const excelRows = displayedStudents.map(s => ({
-      'Student Name': s.studentName,
-      'Admission No': s.admissionNo || '',
-      'Class / Standard': s.classLevel || '',
-      'Parent / Guardian': s.parentName || s.member?.name || '',
+      'Parent / Member': s.parentName || s.member?.name || '',
       'Phone': s.parentPhone || s.member?.phone || '',
       'Area / Division': s.division || s.member?.division || '',
+      'Job / Occupation': s.job || s.member?.job || '',
       'Mahallu Member': s.member ? `${s.member.name} (#${s.member.idNumber || s.member.id})` : 'No',
+      'Students Enrolled': s.studentsCount || 1,
       'Monthly Fee (INR)': s.monthlyFee,
       'Opening Balance (INR)': s.openingBalance || 0,
       'Opening Balance Due (INR)': s.netOpeningBalanceDue || 0,
@@ -590,8 +615,8 @@ export default function MadrasaPage() {
 
     exportToExcel({
       data: excelRows,
-      sheetName: 'Madrasa Students',
-      fileName: 'Madrasa_Students_List.xlsx'
+      sheetName: 'Madrasa Fees',
+      fileName: 'Madrasa_Fees_List.xlsx'
     });
   };
 
@@ -604,13 +629,13 @@ export default function MadrasaPage() {
         <div>
           <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
             <GraduationCap className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
-            Madrasa Students & Fees
+            Madrasa Subscriptions & Fees
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-semibold">
-              {displayedStudents.length} {displayedStudents.length === 1 ? 'Student' : 'Students'}
+              {displayedStudents.length} {displayedStudents.length === 1 ? 'Parent Record' : 'Parent Records'}
             </span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Dedicated madrasa student roster, parent link, multi-month fee collection, 1-click WhatsApp alerts & automatic Income sync
+            Select Mahallu member, specify student count, auto-calculated monthly fees, 1-click WhatsApp alerts & automatic Income sync
           </p>
         </div>
 
@@ -637,7 +662,7 @@ export default function MadrasaPage() {
             className="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
           >
             <Plus className="w-4 h-4" />
-            <span>Add Student</span>
+            <span>Add Madrasa Entry</span>
           </button>
         </div>
       </div>
@@ -646,14 +671,14 @@ export default function MadrasaPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-medium uppercase tracking-wider">Total Students</span>
+            <span className="text-xs font-medium uppercase tracking-wider">Registered Parents</span>
             <Users className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-bold text-slate-900 dark:text-white">
-            {stats.totalStudents}
+            {stats.totalParents}
           </div>
-          <div className="text-[11px] text-emerald-600 font-medium mt-1">
-            {stats.activeStudents} Active in Madrasa
+          <div className="text-[11px] text-emerald-600 font-semibold mt-1">
+            {stats.totalKids} Total Student(s) Enrolled
           </div>
         </div>
 
@@ -666,7 +691,7 @@ export default function MadrasaPage() {
             ₹{stats.totalMonthlyFeePotential.toLocaleString('en-IN')}
           </div>
           <div className="text-[11px] text-slate-400 mt-1">
-            Expected monthly collection
+            Expected total monthly fees
           </div>
         </div>
 
@@ -679,20 +704,20 @@ export default function MadrasaPage() {
             ₹{stats.totalDuesAmount.toLocaleString('en-IN')}
           </div>
           <div className="text-[11px] text-rose-600/80 font-medium mt-1">
-            Across {stats.studentsWithDues} student(s)
+            Across {stats.parentsWithDues} family(ies)
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-medium uppercase tracking-wider">Collections Clear</span>
+            <span className="text-xs font-medium uppercase tracking-wider">Fees Cleared</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-            {stats.totalStudents - stats.studentsWithDues}
+            {stats.totalParents - stats.parentsWithDues}
           </div>
           <div className="text-[11px] text-emerald-600 font-medium mt-1">
-            Students up to date
+            Parents up to date
           </div>
         </div>
       </div>
@@ -703,7 +728,7 @@ export default function MadrasaPage() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search student name, parent, phone, admission #..."
+            placeholder="Search parent name, phone, division, job, Mahallu ID..."
             value={search}
             onChange={handleSearchChange}
             className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
@@ -722,18 +747,6 @@ export default function MadrasaPage() {
         </div>
 
         <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-          {/* Class Filter */}
-          <select
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
-            className="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none"
-          >
-            <option value="All">All Classes</option>
-            {classLevels.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-
           {/* Division Filter */}
           <select
             value={selectedDivision}
@@ -765,17 +778,19 @@ export default function MadrasaPage() {
         {loading ? (
           <div className="py-12 text-center text-slate-400">
             <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-            Loading madrasa students...
+            Loading madrasa records...
           </div>
         ) : displayedStudents.length === 0 ? (
           <div className="py-12 text-center text-slate-400 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
-            No madrasa students found.
+            No madrasa records found. Click &quot;Add Madrasa Entry&quot; to register a family.
           </div>
         ) : (
           displayedStudents.map((s) => {
             const hasDues = getStudentHasDues(s);
             const parentName = s.parentName || s.member?.name || 'Parent';
             const phone = s.parentPhone || s.member?.phone;
+            const division = s.division || s.member?.division;
+            const job = s.job || s.member?.job;
 
             return (
               <div
@@ -785,37 +800,38 @@ export default function MadrasaPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {s.admissionNo && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80">
-                          #{s.admissionNo}
-                        </span>
-                      )}
                       <span className="font-bold text-slate-900 dark:text-white text-sm">
-                        {s.studentName}
+                        {parentName}
                       </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60">
-                        {s.classLevel}
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
+                        {s.studentsCount || 1} Student(s)
                       </span>
                     </div>
 
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      Parent: <span className="font-medium text-slate-700 dark:text-slate-300">{parentName}</span>
-                      {phone && <span className="ml-1.5">📞 {phone}</span>}
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+                      {phone && <span>📞 {phone}</span>}
+                      {division && (
+                        <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium">
+                          <Building className="w-2.5 h-2.5" />
+                          {division}
+                        </span>
+                      )}
+                      {job && (
+                        <span className="inline-flex items-center gap-1 text-slate-500">
+                          <Briefcase className="w-2.5 h-2.5" />
+                          {job}
+                        </span>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-2 mt-1">
-                      {s.member && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">
+                    {s.member && (
+                      <div className="mt-1">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 px-1.5 py-0.5 rounded">
                           <UserCheck className="w-2.5 h-2.5" />
-                          Mahallu Member
+                          Mahallu Member #{s.member.idNumber || s.member.id}
                         </span>
-                      )}
-                      {(s.division || s.member?.division) && (
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          📍 {s.division || s.member?.division}
-                        </span>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1">
@@ -834,7 +850,7 @@ export default function MadrasaPage() {
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleDeleteStudent(s.id)}
+                      onClick={() => handleDelete(s.id)}
                       className="p-1.5 text-rose-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
                       title="Delete"
                     >
@@ -846,13 +862,18 @@ export default function MadrasaPage() {
                 {/* Details Grid */}
                 <div className="grid grid-cols-2 gap-2 text-xs py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/40">
                   <div>
-                    <span className="text-[10px] uppercase text-slate-400 block font-semibold">Monthly Fee</span>
-                    <span className="font-bold text-slate-800 dark:text-slate-200">₹{s.monthlyFee}</span>
+                    <span className="text-[10px] uppercase text-slate-400 block font-semibold">Monthly Madrasa Fee</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                      ₹{s.monthlyFee}
+                      <span className="text-[10px] text-slate-400 font-normal ml-1">
+                        ({s.studentsCount || 1} kid{s.studentsCount > 1 ? 's' : ''})
+                      </span>
+                    </span>
                   </div>
                   <div>
                     <span className="text-[10px] uppercase text-slate-400 block font-semibold">Area / Division</span>
                     <span className="font-semibold text-slate-700 dark:text-slate-300">
-                      {s.division || s.member?.division || '-'}
+                      {division || '-'}
                     </span>
                   </div>
                   {(s.openingBalance || 0) > 0 && (
@@ -918,9 +939,9 @@ export default function MadrasaPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/40 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">
-                <th className="py-3.5 px-4">Student & Class</th>
-                <th className="py-3.5 px-4">Parent / Guardian</th>
-                <th className="py-3.5 px-4">Area / Division</th>
+                <th className="py-3.5 px-4">Parent / Member</th>
+                <th className="py-3.5 px-4">Area & Job</th>
+                <th className="py-3.5 px-4 text-center">Students Count</th>
                 <th className="py-3.5 px-4">Monthly Fee</th>
                 <th className="py-3.5 px-4">Due Status & Months</th>
                 <th className="py-3.5 px-4 text-center">WhatsApp</th>
@@ -939,7 +960,7 @@ export default function MadrasaPage() {
               ) : displayedStudents.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400">
-                    No madrasa students found matching your filter criteria.
+                    No madrasa records found matching your filter criteria.
                   </td>
                 </tr>
               ) : (
@@ -947,56 +968,64 @@ export default function MadrasaPage() {
                   const hasDues = getStudentHasDues(s);
                   const parentName = s.parentName || s.member?.name || '-';
                   const phone = s.parentPhone || s.member?.phone;
+                  const division = s.division || s.member?.division;
+                  const job = s.job || s.member?.job;
 
                   return (
                     <tr key={s.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
-                      {/* Student Info */}
+                      {/* Parent / Member Info */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {s.admissionNo && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80">
-                              #{s.admissionNo}
-                            </span>
-                          )}
                           <span className="font-semibold text-slate-900 dark:text-white">
-                            {s.studentName}
+                            {parentName}
                           </span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60">
-                            {s.classLevel}
-                          </span>
-                        </div>
-                        {s.admissionDate && (
-                          <div className="text-[10px] text-slate-400 mt-0.5">
-                            Admitted: {new Date(s.admissionDate).toLocaleDateString('en-GB')}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Parent / Guardian Info */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-medium text-slate-800 dark:text-slate-200">
-                          {parentName}
-                        </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-                          {phone && <span>📞 {phone}</span>}
                           {s.member && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-1 py-0.2 rounded">
-                              Mahallu Member
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60">
+                              Member #{s.member.idNumber || s.member.id}
                             </span>
+                          )}
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                            s.status === 'Active'
+                              ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                          }`}>
+                            {s.status}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                          {phone && <span>📞 {phone}</span>}
+                          {s.admissionDate && (
+                            <span>• Joined: {new Date(s.admissionDate).toLocaleDateString('en-GB')}</span>
                           )}
                         </div>
                       </td>
 
-                      {/* Division */}
+                      {/* Area & Job */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        {(s.division || s.member?.division) ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md font-medium text-xs">
-                            <Building className="w-3 h-3" />
-                            {s.division || s.member?.division}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-slate-400">-</span>
-                        )}
+                        <div className="space-y-1">
+                          {division ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md font-medium text-xs">
+                              <Building className="w-3 h-3" />
+                              {division}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">-</span>
+                          )}
+                          {job && (
+                            <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                              <Briefcase className="w-2.5 h-2.5" />
+                              {job}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Students Count */}
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                          <GraduationCap className="w-3.5 h-3.5" />
+                          {s.studentsCount || 1} Student{(s.studentsCount || 1) > 1 ? 's' : ''}
+                        </span>
                       </td>
 
                       {/* Monthly Fee */}
@@ -1081,14 +1110,14 @@ export default function MadrasaPage() {
                           <button
                             onClick={() => handleOpenEdit(s)}
                             className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                            title="Edit Student"
+                            title="Edit"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDeleteStudent(s.id)}
+                            onClick={() => handleDelete(s.id)}
                             className="p-1.5 text-rose-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                            title="Delete Student"
+                            title="Delete"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1104,7 +1133,7 @@ export default function MadrasaPage() {
       </div>
 
       {/* ======================================================== */}
-      {/* MODAL 1: ADD / EDIT STUDENT                             */}
+      {/* MODAL 1: ADD / EDIT MADRASA RECORD (SIMPLE)              */}
       {/* ======================================================== */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -1112,7 +1141,7 @@ export default function MadrasaPage() {
             <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
                 <GraduationCap className="w-5 h-5 text-emerald-600" />
-                {editingStudent ? 'Edit Madrasa Student' : 'Register Madrasa Student'}
+                {editingStudent ? 'Edit Madrasa Record' : 'Register Madrasa Entry'}
               </h3>
               <button
                 type="button"
@@ -1125,39 +1154,46 @@ export default function MadrasaPage() {
 
             <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4">
               {/* Select Mahallu Member Parent (Dropdown / Search) */}
-              <div className="p-3.5 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-xl border border-emerald-200/70 dark:border-emerald-800/50 space-y-2">
+              <div className="p-3.5 bg-emerald-50/70 dark:bg-emerald-950/20 rounded-xl border border-emerald-200/80 dark:border-emerald-800/60 space-y-2">
                 <label className="block text-xs font-bold text-emerald-900 dark:text-emerald-300">
-                  Link Parent / Guardian to Mahallu Member (Recommended)
+                  Select Mahallu Member (Parent / Guardian) *
                 </label>
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Search member name or phone to link parent..."
+                    placeholder="Type member name, phone or ward to select..."
                     value={memberSearchTerm}
                     onChange={(e) => {
                       setMemberSearchTerm(e.target.value);
                       setShowMemberDropdown(true);
                     }}
                     onFocus={() => setShowMemberDropdown(true)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                   {formData.memberId && (
                     <button
                       type="button"
                       onClick={() => {
-                        setFormData({ ...formData, memberId: '' });
+                        setFormData({
+                          ...formData,
+                          memberId: '',
+                          parentName: '',
+                          parentPhone: '',
+                          job: '',
+                          division: '',
+                        });
                         setMemberSearchTerm('');
                       }}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-rose-500 hover:text-rose-700 font-bold"
                     >
-                      Unlink
+                      Clear
                     </button>
                   )}
 
                   {showMemberDropdown && (
-                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
                       {filteredParentMembers.length === 0 ? (
-                        <div className="p-2 text-xs text-slate-400 text-center">
+                        <div className="p-2.5 text-xs text-slate-400 text-center">
                           No matching Mahallu members found.
                         </div>
                       ) : (
@@ -1166,21 +1202,23 @@ export default function MadrasaPage() {
                             key={m.id}
                             type="button"
                             onClick={() => handleSelectParentMember(m)}
-                            className="w-full text-left p-2 hover:bg-emerald-50 dark:hover:bg-slate-700/60 transition-colors flex items-center justify-between text-xs"
+                            className="w-full text-left p-2.5 hover:bg-emerald-50 dark:hover:bg-slate-700/60 transition-colors flex items-center justify-between text-xs"
                           >
                             <div>
-                              <span className="font-semibold text-slate-800 dark:text-slate-100">
-                                {m.name}
-                              </span>
-                              {m.division && (
-                                <span className="ml-1 text-[10px] text-emerald-600">({m.division})</span>
-                              )}
-                              <span className="block text-[10px] text-slate-400">
-                                {m.phone || 'No phone'}
-                              </span>
+                              <div className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                                <span>{m.name}</span>
+                                {m.idNumber && (
+                                  <span className="text-[10px] text-blue-600">#{m.idNumber}</span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                {m.phone && <span>📞 {m.phone}</span>}
+                                {m.division && <span>📍 {m.division}</span>}
+                                {m.job && <span>💼 {m.job}</span>}
+                              </div>
                             </div>
                             {formData.memberId === m.id && (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
                             )}
                           </button>
                         ))
@@ -1189,88 +1227,30 @@ export default function MadrasaPage() {
                   )}
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                  Selecting a member automatically copies parent name, phone number, and area division.
+                  Selecting a member automatically prefills parent name, phone, job, division and joining date.
                 </div>
               </div>
 
-              {/* Student Name & Roll No */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Student Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Muhammed Bilal"
-                    value={formData.studentName}
-                    onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Admission / Roll #
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 104"
-                    value={formData.admissionNo}
-                    onChange={(e) => setFormData({ ...formData, admissionNo: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
+              {/* Parent Name (Editable or Manual entry if non-member) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Parent / Guardian Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Muhammed Jisil"
+                  value={formData.parentName}
+                  onChange={(e) => setFormData({ ...formData, parentName: e.target.value })}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
               </div>
 
-              {/* Class & Area / Division */}
+              {/* Prefilled: Phone & Job */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Class / Standard
-                  </label>
-                  <select
-                    value={formData.classLevel}
-                    onChange={(e) => setFormData({ ...formData, classLevel: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    {STANDARD_CLASSES.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Area / Division
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Chulliyode, Area 2"
-                    value={formData.division}
-                    onChange={(e) => setFormData({ ...formData, division: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Parent Name & Phone */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Parent / Guardian Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Abdul Rahman"
-                    value={formData.parentName}
-                    onChange={(e) => setFormData({ ...formData, parentName: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Parent Phone (for WhatsApp)
+                    Phone (Auto-prefilled)
                   </label>
                   <input
                     type="text"
@@ -1280,26 +1260,108 @@ export default function MadrasaPage() {
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Job / Occupation (Auto-prefilled)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Business, Teacher"
+                    value={formData.job}
+                    onChange={(e) => setFormData({ ...formData, job: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
               </div>
 
-              {/* Monthly Fee & Opening Balance */}
+              {/* Prefilled: Area / Division & Admission Date */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Monthly Fee (₹)
+                    Area / Division (Auto-prefilled)
                   </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">₹</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. Chulliyode, Area 1"
+                    value={formData.division}
+                    onChange={(e) => setFormData({ ...formData, division: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Admission / Joining Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.admissionDate}
+                    onChange={(e) => setFormData({ ...formData, admissionDate: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Number of Students & Auto-Calculating Monthly Fee */}
+              <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/20 rounded-xl border border-blue-200/80 dark:border-blue-900/40 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-blue-900 dark:text-blue-300 mb-1">
+                      Number of Students *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={formData.studentsCount}
+                      onChange={(e) => handleStudentsCountChange(e.target.value)}
+                      className="w-full px-3 py-2 text-sm font-bold rounded-xl border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-blue-900 dark:text-blue-300 mb-1">
+                      Fee per Student (₹)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.feePerStudent}
+                        onChange={(e) => handleFeePerStudentChange(e.target.value)}
+                        className="w-full pl-7 pr-3 py-2 text-sm font-semibold rounded-xl border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Auto Calculated Monthly Fee */}
+                <div className="p-2.5 bg-white dark:bg-slate-800 rounded-lg border border-blue-200 dark:border-blue-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Total Monthly Fee:
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      Auto-calculated ({formData.studentsCount || 1} student(s) × ₹{formData.feePerStudent || 200})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-slate-400 font-bold">₹</span>
                     <input
                       type="number"
                       min="0"
                       value={formData.monthlyFee}
                       onChange={(e) => setFormData({ ...formData, monthlyFee: parseFloat(e.target.value) || 0 })}
-                      className="w-full pl-7 pr-3 py-2 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      className="w-24 px-2 py-1 text-sm font-bold text-emerald-600 dark:text-emerald-400 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-right focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
                 </div>
+              </div>
 
+              {/* Opening Balance (Fee Arrears) & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Opening Balance Arrears (₹)
@@ -1316,25 +1378,10 @@ export default function MadrasaPage() {
                     />
                   </div>
                 </div>
-              </div>
-
-              {/* Admission Date & Status */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Admission Date
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.admissionDate}
-                    onChange={(e) => setFormData({ ...formData, admissionDate: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Student Status
+                    Status
                   </label>
                   <select
                     value={formData.status}
@@ -1342,7 +1389,7 @@ export default function MadrasaPage() {
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   >
                     <option value="Active">Active</option>
-                    <option value="Inactive">Inactive / Passed Out</option>
+                    <option value="Inactive">Inactive</option>
                   </select>
                 </div>
               </div>
@@ -1350,11 +1397,11 @@ export default function MadrasaPage() {
               {/* Notes */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Notes / Remarks
+                  Remarks / Student Names (Optional)
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Optional remarks, admission notes..."
+                  placeholder="Optional notes, names of kids, etc..."
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -1374,7 +1421,7 @@ export default function MadrasaPage() {
                   disabled={submitting}
                   className="px-5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs disabled:opacity-50"
                 >
-                  {submitting ? 'Saving...' : editingStudent ? 'Update Student' : 'Register Student'}
+                  {submitting ? 'Saving...' : editingStudent ? 'Update Record' : 'Save Record'}
                 </button>
               </div>
             </form>
@@ -1395,9 +1442,8 @@ export default function MadrasaPage() {
                   Record Madrasa Fee Payment
                 </h3>
                 <div className="text-xs text-slate-500 mt-0.5">
-                  Student: <span className="font-bold text-slate-800 dark:text-slate-200">{activePayingStudent.studentName}</span>
-                  <span className="ml-1 text-blue-600 font-semibold">({activePayingStudent.classLevel})</span>
-                  {activePayingStudent.parentName && <span className="ml-1.5">• Parent: {activePayingStudent.parentName}</span>}
+                  Parent: <span className="font-bold text-slate-800 dark:text-slate-200">{activePayingStudent.parentName || activePayingStudent.member?.name}</span>
+                  <span className="ml-1 text-emerald-600 font-semibold">({activePayingStudent.studentsCount || 1} student(s))</span>
                 </div>
               </div>
               <button
@@ -1585,8 +1631,8 @@ export default function MadrasaPage() {
                   Fee Payment History & Revert
                 </h3>
                 <div className="text-xs text-slate-500 mt-0.5">
-                  Student: <span className="font-bold text-slate-800 dark:text-slate-200">{historyStudent.studentName}</span>
-                  <span className="ml-1 text-blue-600">({historyStudent.classLevel})</span>
+                  Parent: <span className="font-bold text-slate-800 dark:text-slate-200">{historyStudent.parentName || historyStudent.member?.name}</span>
+                  <span className="ml-1 text-emerald-600">({historyStudent.studentsCount || 1} student(s))</span>
                 </div>
               </div>
               <button
@@ -1601,7 +1647,7 @@ export default function MadrasaPage() {
             <div className="p-4 sm:p-5 max-h-[60vh] overflow-y-auto space-y-3">
               {historyGroups.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 text-xs">
-                  No payment records found for this student.
+                  No payment records found for this parent.
                 </div>
               ) : (
                 historyGroups.map((g, idx) => (
@@ -1669,7 +1715,7 @@ export default function MadrasaPage() {
       )}
 
       {/* ======================================================== */}
-      {/* MODAL 4: FULL STUDENT DETAILS & 12-MONTH CALENDAR GRID   */}
+      {/* MODAL 4: FULL DETAILS & 12-MONTH CALENDAR GRID          */}
       {/* ======================================================== */}
       {showDetailModal && detailStudent && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -1678,12 +1724,11 @@ export default function MadrasaPage() {
               <div>
                 <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
                   <GraduationCap className="w-5 h-5 text-emerald-600" />
-                  {detailStudent.studentName}
+                  {detailStudent.parentName || detailStudent.member?.name}
                 </h3>
                 <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
-                  <span className="font-semibold text-blue-600">{detailStudent.classLevel}</span>
-                  {detailStudent.admissionNo && <span>• Roll #{detailStudent.admissionNo}</span>}
-                  <span>• Admitted: {new Date(detailStudent.admissionDate).toLocaleDateString('en-GB')}</span>
+                  <span className="font-semibold text-emerald-600">{detailStudent.studentsCount || 1} Student(s)</span>
+                  <span>• Admitted / Joined: {new Date(detailStudent.admissionDate).toLocaleDateString('en-GB')}</span>
                 </div>
               </div>
               <button
@@ -1699,7 +1744,7 @@ export default function MadrasaPage() {
               {/* Parent & Mahallu Link */}
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80">
                 <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                  Parent / Guardian Information
+                  Parent / Member Profile Details
                 </span>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div>
@@ -1719,11 +1764,14 @@ export default function MadrasaPage() {
                     </span>
                   )}
                 </div>
-                {(detailStudent.division || detailStudent.member?.division) && (
-                  <div className="text-[11px] text-slate-500 mt-1">
-                    Area / Division: {detailStudent.division || detailStudent.member?.division}
-                  </div>
-                )}
+                <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-3">
+                  {(detailStudent.division || detailStudent.member?.division) && (
+                    <span>📍 Area: {detailStudent.division || detailStudent.member?.division}</span>
+                  )}
+                  {(detailStudent.job || detailStudent.member?.job) && (
+                    <span>💼 Job: {detailStudent.job || detailStudent.member?.job}</span>
+                  )}
+                </div>
               </div>
 
               {/* Remarks */}
@@ -1741,9 +1789,9 @@ export default function MadrasaPage() {
               {/* 4 Financial Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80">
-                  <span className="text-[10px] uppercase text-slate-400 block font-semibold">Monthly Fee</span>
+                  <span className="text-[10px] uppercase text-slate-400 block font-semibold">Monthly Madrasa Fee</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">₹{detailStudent.monthlyFee}</span>
-                  <span className="text-[10px] text-slate-400"> / mo</span>
+                  <span className="text-[10px] text-slate-400 block">for {detailStudent.studentsCount || 1} kid(s)</span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80">
                   <span className="text-[10px] uppercase text-slate-400 block font-semibold">Area / Division</span>
@@ -1776,7 +1824,7 @@ export default function MadrasaPage() {
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-emerald-600" />
                     <h4 className="font-bold text-xs uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                      Madrasa Fee Status ({detailYear})
+                      Madrasa Monthly Fee Status ({detailYear})
                     </h4>
                   </div>
                   <select
@@ -1817,7 +1865,7 @@ export default function MadrasaPage() {
                       IconComp = Calendar;
                     } else if (isPrior) {
                       badgeClass = 'bg-slate-100/50 dark:bg-slate-800/20 border-slate-200/50 dark:border-slate-800/50 text-slate-400';
-                      statusLabel = 'Before Admission';
+                      statusLabel = 'Before Joining';
                       IconComp = Info;
                     } else {
                       badgeClass = 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-300';

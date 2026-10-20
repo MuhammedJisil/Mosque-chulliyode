@@ -160,17 +160,20 @@ model FoodDuty {
 
 model MadrasaStudent {
   id             Int              @id @default(autoincrement())
-  studentName    String
-  admissionNo    String?          // Roll / Admission No
-  memberId       Int?             // Parent / Guardian Member (optional link)
+  memberId       Int?             // Parent / Guardian Member link
   member         Member?          @relation(fields: [memberId], references: [id], onDelete: SetNull)
-  parentName     String?          // Parent or Guardian Name
+  parentName     String?          // Parent or Member Name
   parentPhone    String?          @default("")
+  job            String?          // Parent / Member Job
   division       String?          // Ward / Division / Area
-  classLevel     String?          @default("Class 1") // Class 1, Class 2, ...
-  monthlyFee     Float            @default(200.0)
+  studentsCount  Int              @default(1) // Number of children in madrasa
+  studentName    String?          // Optional child name(s)
+  admissionNo    String?          // Optional Roll / Admission No
+  classLevel     String?          @default("") // Optional Class / Grade
+  monthlyFee     Float            @default(200.0) // Total monthly madrasa fee
+  feePerStudent  Float?           @default(200.0) // Rate per student
   openingBalance Float            @default(0.0) // Past fee arrears
-  admissionDate  DateTime         @default(now())
+  admissionDate  DateTime         @default(now()) // Joining / Admission date
   status         String           @default("Active") // Active or Inactive
   notes          String?
   createdAt      DateTime         @default(now())

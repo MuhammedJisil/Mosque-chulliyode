@@ -62,9 +62,10 @@ export const openWhatsAppMadrasaDueReminder = (student) => {
     : `${student.dueMonthsCount || 0} Month(s)`;
 
   const parentName = student.parentName || student.member?.name || 'Parent/Guardian';
+  const countText = student.studentsCount && student.studentsCount > 1 ? `${student.studentsCount} students` : '1 student';
 
   let message = `*Assalamu Alaikum wa Rahmatullahi wa Barakatuhu, ${parentName}* 🕌📚\n\n`;
-  message += `This is a reminder from *Madrasa Sirajul Huda (Masjid al noor, Chulliyode)* regarding Madrasa fees for student: *${student.studentName}* (${student.classLevel || 'Class'})\n\n`;
+  message += `This is a reminder from *Madrasa Sirajul Huda (Masjid al noor, Chulliyode)* regarding Madrasa monthly fees (${countText} enrolled).\n\n`;
   message += `📌 *Madrasa Fee Due Details:*\n`;
 
   if (student.dueMonthsCount > 0) {

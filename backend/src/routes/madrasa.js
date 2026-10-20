@@ -94,13 +94,15 @@ router.get('/', authMiddleware, async (req, res) => {
     if (search && search.trim() !== '') {
       const q = search.trim();
       where.OR = [
-        { studentName: stringFilter(q) },
         { parentName: stringFilter(q) },
         { parentPhone: stringFilter(q) },
+        { job: stringFilter(q) },
         { division: stringFilter(q) },
+        { studentName: stringFilter(q) },
         { classLevel: stringFilter(q) },
         { admissionNo: stringFilter(q) },
         { member: { name: stringFilter(q) } },
+        { member: { phone: stringFilter(q) } },
       ];
     }
 
@@ -120,13 +122,13 @@ router.get('/', authMiddleware, async (req, res) => {
       where,
       include: {
         member: {
-          select: { id: true, name: true, phone: true, division: true, idNumber: true }
+          select: { id: true, name: true, phone: true, job: true, division: true, idNumber: true }
         },
         payments: {
           orderBy: { paymentDate: 'desc' }
         }
       },
-      orderBy: { studentName: 'asc' }
+      orderBy: { createdAt: 'desc' }
     });
 
     let studentsWithDue = students.map(s => {
@@ -137,34 +139,26 @@ router.get('/', authMiddleware, async (req, res) => {
       };
     });
 
-    // Smart Search Ranking: prioritize prefix matches (e.g. startsWith 'j', then word startsWith 'j')
+    // Smart Search Ranking: prioritize prefix matches on parent name or member name
     if (search && search.trim() !== '') {
       const qLower = search.trim().toLowerCase();
       studentsWithDue.sort((a, b) => {
-        const aName = (a.studentName || '').toLowerCase();
-        const bName = (b.studentName || '').toLowerCase();
+        const aName = (a.parentName || a.member?.name || a.studentName || '').toLowerCase();
+        const bName = (b.parentName || b.member?.name || b.studentName || '').toLowerCase();
 
-        // 1. Exact start of student full name
+        // 1. Exact start of parent/member name
         const aStarts = aName.startsWith(qLower);
         const bStarts = bName.startsWith(qLower);
         if (aStarts && !bStarts) return -1;
         if (!aStarts && bStarts) return 1;
 
-        // 2. Any word in the student name starts with query
+        // 2. Any word in the name starts with query
         const aWordStarts = aName.split(/\s+/).some(w => w.startsWith(qLower));
         const bWordStarts = bName.split(/\s+/).some(w => w.startsWith(qLower));
         if (aWordStarts && !bWordStarts) return -1;
         if (!aWordStarts && bWordStarts) return 1;
 
-        // 3. Parent name starts with query
-        const aParent = (a.parentName || a.member?.name || '').toLowerCase();
-        const bParent = (b.parentName || b.member?.name || '').toLowerCase();
-        const aPStarts = aParent.split(/\s+/).some(w => w.startsWith(qLower));
-        const bPStarts = bParent.split(/\s+/).some(w => w.startsWith(qLower));
-        if (aPStarts && !bPStarts) return -1;
-        if (!aPStarts && bPStarts) return 1;
-
-        // 4. Default alphabetical sort
+        // 3. Default alphabetical sort
         return aName.localeCompare(bName);
       });
     }
@@ -213,30 +207,30 @@ router.get('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// 3. Create Madrasa Student
+// 3. Create Madrasa Record
 router.post('/', authMiddleware, async (req, res) => {
   try {
     const {
-      studentName,
-      admissionNo,
       memberId,
       parentName,
       parentPhone,
+      job,
       division,
-      classLevel = 'Class 1',
-      monthlyFee = 200,
+      studentsCount = 1,
+      studentName,
+      admissionNo,
+      classLevel = '',
+      monthlyFee,
+      feePerStudent = 200,
       openingBalance = 0,
       admissionDate,
       status = 'Active',
       notes
     } = req.body;
 
-    if (!studentName || !studentName.trim()) {
-      return res.status(400).json({ success: false, message: 'Student name is required.' });
-    }
-
-    let finalParentName = parentName || '';
-    let finalParentPhone = parentPhone || '';
+    let finalParentName = parentName ? parentName.trim() : '';
+    let finalParentPhone = parentPhone ? String(parentPhone).trim() : '';
+    let finalJob = job || '';
     let finalDivision = division || '';
 
     let parsedMemberId = null;
@@ -247,54 +241,75 @@ router.post('/', authMiddleware, async (req, res) => {
         if (linkedMember) {
           if (!finalParentName) finalParentName = linkedMember.name;
           if (!finalParentPhone) finalParentPhone = linkedMember.phone || '';
+          if (!finalJob) finalJob = linkedMember.job || '';
           if (!finalDivision) finalDivision = linkedMember.division || '';
         }
       }
     }
 
+    if (!finalParentName && !studentName) {
+      return res.status(400).json({ success: false, message: 'Parent or Mahallu member selection is required.' });
+    }
+
+    const count = parseInt(studentsCount) || 1;
+    const perFee = parseFloat(feePerStudent) || 200;
+    const finalMonthlyFee = (monthlyFee !== undefined && parseFloat(monthlyFee) > 0)
+      ? parseFloat(monthlyFee)
+      : (count * perFee);
+
+    const finalStudentName = studentName && studentName.trim()
+      ? studentName.trim()
+      : finalParentName;
+
     const newStudent = await prisma.madrasaStudent.create({
       data: {
-        studentName: studentName.trim(),
-        admissionNo: admissionNo ? String(admissionNo).trim() : null,
         memberId: parsedMemberId,
         parentName: finalParentName,
         parentPhone: finalParentPhone,
+        job: finalJob,
         division: finalDivision,
-        classLevel: classLevel || 'Class 1',
-        monthlyFee: parseFloat(monthlyFee) || 200,
+        studentsCount: count,
+        studentName: finalStudentName,
+        admissionNo: admissionNo ? String(admissionNo).trim() : null,
+        classLevel: classLevel || '',
+        monthlyFee: finalMonthlyFee,
+        feePerStudent: perFee,
         openingBalance: parseFloat(openingBalance) || 0,
         admissionDate: admissionDate ? new Date(admissionDate) : new Date(),
         status: status || 'Active',
         notes: notes || '',
       },
       include: {
-        member: { select: { id: true, name: true, phone: true, division: true } }
+        member: { select: { id: true, name: true, phone: true, job: true, division: true } }
       }
     });
 
     res.status(201).json({
       success: true,
-      message: 'Madrasa student registered successfully',
+      message: 'Madrasa entry registered successfully',
       student: newStudent,
     });
   } catch (error) {
-    console.error('Create madrasa student error:', error);
+    console.error('Create madrasa error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// 4. Update Madrasa Student
+// 4. Update Madrasa Record
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const {
-      studentName,
-      admissionNo,
       memberId,
       parentName,
       parentPhone,
+      job,
       division,
+      studentsCount,
+      studentName,
+      admissionNo,
       classLevel,
       monthlyFee,
+      feePerStudent,
       openingBalance,
       admissionDate,
       status,
@@ -306,24 +321,35 @@ router.put('/:id', authMiddleware, async (req, res) => {
       parsedMemberId = memberId ? parseInt(memberId) : null;
     }
 
+    const count = studentsCount !== undefined ? (parseInt(studentsCount) || 1) : undefined;
+    const perFee = feePerStudent !== undefined ? (parseFloat(feePerStudent) || 200) : undefined;
+
+    let calcMonthlyFee = undefined;
+    if (monthlyFee !== undefined) {
+      calcMonthlyFee = parseFloat(monthlyFee) || 0;
+    }
+
     const updated = await prisma.madrasaStudent.update({
       where: { id: parseInt(req.params.id) },
       data: {
+        memberId: parsedMemberId,
+        parentName: parentName !== undefined ? parentName.trim() : undefined,
+        parentPhone: parentPhone !== undefined ? parentPhone.trim() : undefined,
+        job: job !== undefined ? job.trim() : undefined,
+        division: division !== undefined ? division.trim() : undefined,
+        studentsCount: count,
         studentName: studentName !== undefined ? studentName.trim() : undefined,
         admissionNo: admissionNo !== undefined ? (admissionNo ? String(admissionNo).trim() : null) : undefined,
-        memberId: parsedMemberId,
-        parentName: parentName !== undefined ? parentName : undefined,
-        parentPhone: parentPhone !== undefined ? parentPhone : undefined,
-        division: division !== undefined ? division : undefined,
         classLevel: classLevel !== undefined ? classLevel : undefined,
-        monthlyFee: monthlyFee !== undefined ? (parseFloat(monthlyFee) || 0) : undefined,
+        monthlyFee: calcMonthlyFee,
+        feePerStudent: perFee,
         openingBalance: openingBalance !== undefined ? (parseFloat(openingBalance) || 0) : undefined,
         admissionDate: admissionDate ? new Date(admissionDate) : undefined,
         status: status !== undefined ? status : undefined,
         notes: notes !== undefined ? notes : undefined,
       },
       include: {
-        member: { select: { id: true, name: true, phone: true, division: true } }
+        member: { select: { id: true, name: true, phone: true, job: true, division: true } }
       }
     });
 
