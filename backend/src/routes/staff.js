@@ -3,7 +3,7 @@ const router = express.Router();
 const prisma = require('../config/db');
 const authMiddleware = require('../middleware/auth');
 
-// Helper to compute pending salary months for a staff member
+// Helper to compute pending salary months for a staff member (with full partial payment support)
 function calculateStaffPending(staff, payments = []) {
   if (staff.status !== 'Active') {
     return {
@@ -12,7 +12,8 @@ function calculateStaffPending(staff, payments = []) {
       totalPendingSalary: 0,
       isCurrentMonthPaid: true,
       nextDueMonth: null,
-      pendingMonthsNames: ''
+      pendingMonthsNames: '',
+      hasPartialPayment: false,
     };
   }
 
@@ -29,21 +30,43 @@ function calculateStaffPending(staff, payments = []) {
     startMonth = 1;
   }
 
-  const paidSet = new Set(payments.map(p => `${p.year}-${p.month}`));
+  // Calculate sum of payments made per month-year
+  const paidMap = new Map(); // key: "YYYY-M" -> total paid number
+  payments.forEach(p => {
+    const key = `${p.year}-${p.month}`;
+    paidMap.set(key, (paidMap.get(key) || 0) + (p.amount || 0));
+  });
+
   const pendingMonths = [];
   let y = startYear;
   let m = startMonth;
+  let hasPartialPayment = false;
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   while (y < currentYear || (y === currentYear && m <= currentMonth)) {
     const key = `${y}-${m}`;
-    if (!paidSet.has(key)) {
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const paidForMonth = paidMap.get(key) || 0;
+    const monthlySalary = staff.salary || 0;
+    const remainingDue = Math.max(0, monthlySalary - paidForMonth);
+
+    if (remainingDue > 0) {
+      const isPartial = paidForMonth > 0;
+      if (isPartial) hasPartialPayment = true;
+
       pendingMonths.push({
         month: m,
         year: y,
-        label: `${monthNames[m - 1]} ${y}`,
+        label: isPartial
+          ? `${monthNames[m - 1]} ${y} (₹${paidForMonth} paid, ₹${remainingDue} due)`
+          : `${monthNames[m - 1]} ${y}`,
+        shortLabel: `${monthNames[m - 1]} ${y}`,
+        paidAmount: paidForMonth,
+        remainingDue,
+        isPartial,
+        totalSalary: monthlySalary,
       });
     }
+
     m++;
     if (m > 12) {
       m = 1;
@@ -51,10 +74,12 @@ function calculateStaffPending(staff, payments = []) {
     }
   }
 
-  const totalPendingSalary = pendingMonths.length * (staff.salary || 0);
-  const isCurrentMonthPaid = paidSet.has(`${currentYear}-${currentMonth}`);
+  const totalPendingSalary = pendingMonths.reduce((sum, item) => sum + item.remainingDue, 0);
+  const currentKey = `${currentYear}-${currentMonth}`;
+  const currentPaid = paidMap.get(currentKey) || 0;
+  const isCurrentMonthPaid = currentPaid >= (staff.salary || 0);
   const nextDueMonth = pendingMonths.length > 0 ? pendingMonths[0] : null;
-  const pendingMonthsNames = pendingMonths.map(p => p.label).join(', ');
+  const pendingMonthsNames = pendingMonths.map(p => p.shortLabel).join(', ');
 
   return {
     pendingMonthsCount: pendingMonths.length,
@@ -63,6 +88,7 @@ function calculateStaffPending(staff, payments = []) {
     totalPendingSalary,
     isCurrentMonthPaid,
     nextDueMonth,
+    hasPartialPayment,
   };
 }
 
@@ -244,13 +270,16 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// Quick Payout: Logs an Expense record for Staff Salary AND records a StaffPayment entry
+// Salary Payout (Supports Full Payout, Part-by-Part Partial Payments, & Installments)
 router.post('/:id/payout', authMiddleware, async (req, res) => {
   try {
     const staffId = parseInt(req.params.id);
-    const { amount, paymentMode = 'Cash in Hand', month, year, notes } = req.body;
+    const { amount, paymentMode = 'Cash in Hand', month, year, notes, paymentDate } = req.body;
 
-    const staff = await prisma.staff.findUnique({ where: { id: staffId } });
+    const staff = await prisma.staff.findUnique({
+      where: { id: staffId },
+      include: { payments: true }
+    });
     if (!staff) {
       return res.status(404).json({ success: false, message: 'Staff member not found' });
     }
@@ -258,29 +287,53 @@ router.post('/:id/payout', authMiddleware, async (req, res) => {
     const payMonth = parseInt(month) || (new Date().getMonth() + 1);
     const payYear = parseInt(year) || new Date().getFullYear();
 
-    // Check if salary for this month/year has already been recorded
-    const existingPayment = await prisma.staffPayment.findFirst({
-      where: {
-        staffId,
-        month: payMonth,
-        year: payYear,
-      }
-    });
-
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const monthLabel = monthNames[payMonth - 1];
 
-    if (existingPayment) {
+    // Calculate how much has already been paid for this specific month/year
+    const alreadyPaid = staff.payments
+      .filter(p => p.month === payMonth && p.year === payYear)
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    const remainingDueBefore = Math.max(0, staff.salary - alreadyPaid);
+
+    if (alreadyPaid >= staff.salary) {
       return res.status(400).json({
         success: false,
-        message: `Salary for ${monthLabel} ${payYear} has already been disbursed to ${staff.name} on ${new Date(existingPayment.paymentDate).toLocaleDateString('en-GB')}.`
+        message: `Salary for ${monthLabel} ${payYear} (₹${staff.salary}) has already been fully disbursed to ${staff.name}.`
       });
     }
 
-    const payAmount = amount ? parseFloat(amount) : staff.salary;
-    const receiptNo = `SAL-${payYear}${String(payMonth).padStart(2, '0')}-${String(staffId).padStart(3, '0')}-${Date.now().toString().slice(-4)}`;
+    const payAmount = amount !== undefined && amount !== null && amount !== ''
+      ? parseFloat(amount)
+      : remainingDueBefore;
 
-    // 1. Record Staff Payment
+    if (isNaN(payAmount) || payAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment amount must be greater than 0.'
+      });
+    }
+
+    const remainingDueAfter = Math.max(0, remainingDueBefore - payAmount);
+    const isPartial = remainingDueAfter > 0;
+    const isPartiallyCovered = alreadyPaid > 0;
+
+    const receiptNo = `SAL-${payYear}${String(payMonth).padStart(2, '0')}-${String(staffId).padStart(3, '0')}-${Date.now().toString().slice(-4)}`;
+    const effectiveDate = paymentDate ? new Date(paymentDate) : new Date();
+
+    // 1. Build informative notes for StaffPayment
+    let paymentRemarks = notes || '';
+    if (!paymentRemarks) {
+      if (isPartial) {
+        paymentRemarks = `Partial salary payout (₹${payAmount}). Remaining balance due: ₹${remainingDueAfter}.`;
+      } else if (isPartiallyCovered) {
+        paymentRemarks = `Salary installment (₹${payAmount}) completing full salary for ${monthLabel} ${payYear}.`;
+      } else {
+        paymentRemarks = `Full salary disbursement for ${monthLabel} ${payYear}.`;
+      }
+    }
+
     const staffPayment = await prisma.staffPayment.create({
       data: {
         staffId,
@@ -289,14 +342,20 @@ router.post('/:id/payout', authMiddleware, async (req, res) => {
         amount: payAmount,
         paymentMode,
         receiptNo,
-        notes: notes || '',
-        paymentDate: new Date(),
+        notes: paymentRemarks,
+        paymentDate: effectiveDate,
       }
     });
 
     // 2. Automatically log in Expense with link
-    const purpose = `Staff Salary - ${staff.name} (${staff.category}) for ${monthLabel} ${payYear}`;
-    let expenseDesc = `Monthly salary disbursement. Phone: ${staff.phone || 'N/A'}. Receipt: ${receiptNo}.`;
+    const purpose = isPartial
+      ? `Staff Salary (Partial Payout) - ${staff.name} (${staff.category}) for ${monthLabel} ${payYear}`
+      : `Staff Salary - ${staff.name} (${staff.category}) for ${monthLabel} ${payYear}`;
+
+    let expenseDesc = `Salary disbursement. Phone: ${staff.phone || 'N/A'}. Receipt: ${receiptNo}.`;
+    if (isPartial) {
+      expenseDesc += ` [Partial Payment: ₹${payAmount} of ₹${staff.salary}. Remaining due: ₹${remainingDueAfter}]`;
+    }
     if (notes) expenseDesc += ` Remarks: ${notes}`;
 
     const expense = await prisma.expense.create({
@@ -309,15 +368,19 @@ router.post('/:id/payout', authMiddleware, async (req, res) => {
         description: expenseDesc,
         staffPaymentId: staffPayment.id,
         staffId: staff.id,
-        date: new Date(),
+        date: effectiveDate,
       }
     });
 
     res.status(201).json({
       success: true,
-      message: `Salary payout of ₹${payAmount} for ${staff.name} (${monthLabel} ${payYear}) recorded in Expenses and Staff History!`,
+      message: isPartial
+        ? `Partial salary payment of ₹${payAmount} recorded for ${staff.name} (${monthLabel} ${payYear})! Remaining due: ₹${remainingDueAfter}.`
+        : `Salary payment of ₹${payAmount} for ${staff.name} (${monthLabel} ${payYear}) recorded in Expenses and Staff History!`,
       payment: staffPayment,
       expense,
+      remainingDue: remainingDueAfter,
+      isPartial,
     });
   } catch (error) {
     console.error('Staff payout error:', error);

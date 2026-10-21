@@ -66,8 +66,33 @@ export default function StaffPage() {
     paymentMode: PAYMENT_MODES[0],
     month: currentMonth,
     year: currentYear,
+    paymentDate: new Date().toISOString().split('T')[0],
     notes: '',
   });
+
+  // Selected month calculations for Payout Modal
+  const selectedMonthPayments = useMemo(() => {
+    if (!payoutStaff || !payoutStaff.payments) return [];
+    return payoutStaff.payments.filter(
+      p => p.month === payoutForm.month && p.year === payoutForm.year
+    );
+  }, [payoutStaff, payoutForm.month, payoutForm.year]);
+
+  const selectedMonthPaidTotal = useMemo(() => {
+    return selectedMonthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  }, [selectedMonthPayments]);
+
+  const selectedMonthRemainingDue = useMemo(() => {
+    if (!payoutStaff) return 0;
+    return Math.max(0, (payoutStaff.salary || 0) - selectedMonthPaidTotal);
+  }, [payoutStaff, selectedMonthPaidTotal]);
+
+  const getRemainingDueForMonthYear = (m, y) => {
+    if (!payoutStaff) return 0;
+    const monthPayments = (payoutStaff.payments || []).filter(p => p.month === m && p.year === y);
+    const paid = monthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    return Math.max(0, (payoutStaff.salary || 0) - paid);
+  };
 
   const fetchStaff = async () => {
     try {
@@ -142,28 +167,27 @@ export default function StaffPage() {
     }
   };
 
-  // Open Salary Payout modal (Auto-selects earliest pending salary month)
+  // Open Salary Payout modal (Auto-selects earliest pending month and default remaining due)
   const handleOpenPayout = (s) => {
     if (s.status !== 'Active') {
       toast.error(`${s.name} is currently ${s.status}. Salary can only be disbursed to Active personnel.`);
-      return;
-    }
-    if (s.pendingMonthsCount === 0) {
-      toast.success(`${s.name} is already paid up to date! All monthly salaries have been disbursed.`);
       return;
     }
 
     setPayoutStaff(s);
     const targetMonth = s.nextDueMonth ? s.nextDueMonth.month : currentMonth;
     const targetYear = s.nextDueMonth ? s.nextDueMonth.year : currentYear;
-    const targetLabel = s.nextDueMonth ? s.nextDueMonth.label : `${MONTH_NAMES[targetMonth - 1]} ${targetYear}`;
+    const initialAmount = s.nextDueMonth && s.nextDueMonth.remainingDue !== undefined
+      ? s.nextDueMonth.remainingDue
+      : s.salary;
 
     setPayoutForm({
-      amount: s.salary,
+      amount: initialAmount,
       paymentMode: 'Cash in Hand',
       month: targetMonth,
       year: targetYear,
-      notes: `Salary disbursed for ${targetLabel}`,
+      paymentDate: new Date().toISOString().split('T')[0],
+      notes: '',
     });
     setShowPayoutModal(true);
   };
@@ -173,7 +197,10 @@ export default function StaffPage() {
       ...prev,
       month: mth.month,
       year: mth.year,
-      notes: `Salary disbursed for ${mth.label}`,
+      amount: mth.remainingDue !== undefined ? mth.remainingDue : (payoutStaff?.salary || ''),
+      notes: mth.isPartial
+        ? `Partial installment towards ${mth.shortLabel || mth.label}`
+        : `Salary disbursement for ${mth.shortLabel || mth.label}`,
     }));
   };
 
@@ -486,9 +513,14 @@ export default function StaffPage() {
                 <div className="flex items-center justify-between pt-1">
                   {hasPending ? (
                     <div className="space-y-0.5">
-                      <div className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400">
+                      <div className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 flex-wrap">
                         <AlertCircle className="w-3.5 h-3.5" />
                         <span>{s.pendingMonthsCount} Mo Pending • ₹{Number(s.totalPendingSalary).toLocaleString('en-IN')}</span>
+                        {s.hasPartialPayment && (
+                          <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                            Part Paid
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] font-semibold text-rose-700 dark:text-rose-300">
                         Pending: {s.pendingMonthsNames}
@@ -574,11 +606,18 @@ export default function StaffPage() {
                       <td className="py-3.5 px-4">
                         {hasPending ? (
                           <div className="space-y-0.5">
-                            <div className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400 font-bold">
-                              <AlertCircle className="w-3.5 h-3.5" />
-                              <span>{s.pendingMonthsCount} Mo Pending (₹{Number(s.totalPendingSalary).toLocaleString('en-IN')})</span>
+                            <div className="inline-flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400 font-bold">
+                                <AlertCircle className="w-3.5 h-3.5" />
+                                {s.pendingMonthsCount} Mo Pending (₹{Number(s.totalPendingSalary).toLocaleString('en-IN')})
+                              </span>
+                              {s.hasPartialPayment && (
+                                <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                  Part Paid
+                                </span>
+                              )}
                             </div>
-                            <div className="text-[11px] font-semibold text-rose-700 dark:text-rose-300 max-w-xs truncate">
+                            <div className="text-[11px] font-semibold text-rose-700 dark:text-rose-300 max-w-xs truncate" title={s.pendingMonthsNames}>
                               Pending: {s.pendingMonthsNames}
                             </div>
                           </div>
@@ -690,9 +729,14 @@ export default function StaffPage() {
               {/* Pending Months Chips */}
               {payoutStaff.pendingMonths && payoutStaff.pendingMonths.length > 0 && (
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1.5">
-                    Click to Pay Specific Pending Month:
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold uppercase text-slate-700 dark:text-slate-300">
+                      Pending Due Months:
+                    </label>
+                    <span className="text-[11px] text-slate-500">
+                      Click to auto-fill
+                    </span>
+                  </div>
                   <div className="flex flex-wrap gap-1.5">
                     {payoutStaff.pendingMonths.map((mth, idx) => {
                       const isSelected = payoutForm.month === mth.month && payoutForm.year === mth.year;
@@ -701,13 +745,25 @@ export default function StaffPage() {
                           key={idx}
                           type="button"
                           onClick={() => handleSelectPendingMonth(mth)}
-                          className={`px-3 py-1 text-xs font-semibold rounded-lg border transition-all ${
+                          className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all flex items-center gap-1.5 ${
                             isSelected
                               ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : mth.isPartial
+                              ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800 hover:bg-amber-100'
                               : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900 hover:bg-rose-100'
                           }`}
                         >
-                          {mth.label} {isSelected && '✓'}
+                          <span>{mth.shortLabel}</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                            isSelected
+                              ? 'bg-white/20 text-white'
+                              : mth.isPartial
+                              ? 'bg-amber-200/80 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200'
+                              : 'bg-rose-200/80 dark:bg-rose-900/80 text-rose-800 dark:text-rose-200'
+                          }`}>
+                            ₹{mth.remainingDue.toLocaleString('en-IN')} {mth.isPartial ? '(Part)' : ''}
+                          </span>
+                          {isSelected && '✓'}
                         </button>
                       );
                     })}
@@ -726,7 +782,13 @@ export default function StaffPage() {
                     onChange={(e) => {
                       const m = parseInt(e.target.value);
                       const mName = MONTH_NAMES[m - 1];
-                      setPayoutForm({ ...payoutForm, month: m, notes: `Salary disbursed for ${mName} ${payoutForm.year}` });
+                      const due = getRemainingDueForMonthYear(m, payoutForm.year);
+                      setPayoutForm(prev => ({
+                        ...prev,
+                        month: m,
+                        amount: due > 0 ? due : '',
+                        notes: `Salary disbursed for ${mName} ${prev.year}`
+                      }));
                     }}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   >
@@ -745,7 +807,13 @@ export default function StaffPage() {
                     onChange={(e) => {
                       const y = parseInt(e.target.value);
                       const mName = MONTH_NAMES[payoutForm.month - 1];
-                      setPayoutForm({ ...payoutForm, year: y, notes: `Salary disbursed for ${mName} ${y}` });
+                      const due = getRemainingDueForMonthYear(payoutForm.month, y);
+                      setPayoutForm(prev => ({
+                        ...prev,
+                        year: y,
+                        amount: due > 0 ? due : '',
+                        notes: `Salary disbursed for ${mName} ${y}`
+                      }));
                     }}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   >
@@ -756,42 +824,127 @@ export default function StaffPage() {
                 </div>
               </div>
 
+              {/* Month Breakdown Card */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Monthly Standard Salary:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-100">
+                    ₹{Number(payoutStaff.salary).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">
+                    Already Paid for {MONTH_NAMES[payoutForm.month - 1]} {payoutForm.year}:
+                  </span>
+                  <span className={`font-semibold ${selectedMonthPaidTotal > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                    ₹{Number(selectedMonthPaidTotal).toLocaleString('en-IN')}
+                    {selectedMonthPayments.length > 0 && ` (${selectedMonthPayments.length} installment${selectedMonthPayments.length > 1 ? 's' : ''})`}
+                  </span>
+                </div>
+                <div className="pt-1.5 border-t border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Remaining Balance Due:</span>
+                  <span className={`text-sm font-extrabold ${selectedMonthRemainingDue > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                    ₹{Number(selectedMonthRemainingDue).toLocaleString('en-IN')}
+                    {selectedMonthRemainingDue === 0 && ' (Fully Paid ✓)'}
+                  </span>
+                </div>
+              </div>
+
+              {selectedMonthRemainingDue === 0 && (
+                <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 font-medium flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                  <span>Salary for {MONTH_NAMES[payoutForm.month - 1]} {payoutForm.year} has already been fully disbursed! Select another pending month above to pay.</span>
+                </div>
+              )}
+
+              {/* Quick Amount Options when dues exist */}
+              {selectedMonthRemainingDue > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] text-slate-500 font-medium">Quick Amount:</span>
+                  <button
+                    type="button"
+                    onClick={() => setPayoutForm({ ...payoutForm, amount: selectedMonthRemainingDue })}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-all"
+                  >
+                    Pay Full Due (₹{Number(selectedMonthRemainingDue).toLocaleString('en-IN')})
+                  </button>
+                  {selectedMonthRemainingDue > 1000 && (
+                    <button
+                      type="button"
+                      onClick={() => setPayoutForm({ ...payoutForm, amount: Math.round(selectedMonthRemainingDue / 2) })}
+                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-all"
+                    >
+                      Pay Part (₹{Number(Math.round(selectedMonthRemainingDue / 2)).toLocaleString('en-IN')})
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Amount Input with Live Calculation */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Salary Amount (IN ₹) <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Payment Amount (IN ₹) <span className="text-rose-500">*</span>
+                  </label>
+                  {Number(payoutForm.amount) > 0 && selectedMonthRemainingDue > 0 && (
+                    <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                      {Number(payoutForm.amount) < selectedMonthRemainingDue
+                        ? `Partial: ₹${Number(selectedMonthRemainingDue - Number(payoutForm.amount)).toLocaleString('en-IN')} will remain due`
+                        : Number(payoutForm.amount) === selectedMonthRemainingDue
+                        ? 'Clears this month full balance'
+                        : `Extra payment`}
+                    </span>
+                  )}
+                </div>
                 <input
                   type="number"
                   min="1"
                   required
                   value={payoutForm.amount}
                   onChange={(e) => setPayoutForm({ ...payoutForm, amount: e.target.value })}
+                  placeholder={`e.g. ${selectedMonthRemainingDue || payoutStaff.salary}`}
                   className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Payment Mode
-                </label>
-                <select
-                  value={payoutForm.paymentMode}
-                  onChange={(e) => setPayoutForm({ ...payoutForm, paymentMode: e.target.value })}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                >
-                  {PAYMENT_MODES.map((mode, i) => (
-                    <option key={i} value={mode}>{mode}</option>
-                  ))}
-                </select>
+              {/* Date & Mode in 2 cols */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Payment Date <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={payoutForm.paymentDate}
+                    onChange={(e) => setPayoutForm({ ...payoutForm, paymentDate: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Payment Mode
+                  </label>
+                  <select
+                    value={payoutForm.paymentMode}
+                    onChange={(e) => setPayoutForm({ ...payoutForm, paymentMode: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  >
+                    {PAYMENT_MODES.map((mode, i) => (
+                      <option key={i} value={mode}>{mode}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Disbursement Remarks (Which month paid / notes)
+                  Disbursement Remarks (Installment notes / remarks)
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Salary disbursed for September 2026 via cash"
+                  placeholder="e.g. Partial advance given on 10th / 1st installment"
                   value={payoutForm.notes}
                   onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -812,10 +965,17 @@ export default function StaffPage() {
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md transition-all"
+                  disabled={selectedMonthRemainingDue === 0 && selectedMonthPaidTotal >= (payoutStaff.salary || 0)}
+                  className={`inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-xl shadow-md transition-all ${
+                    selectedMonthRemainingDue === 0 && selectedMonthPaidTotal >= (payoutStaff.salary || 0)
+                      ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
                 >
                   <Check className="w-4 h-4" />
-                  Confirm & Sync to Expense
+                  {Number(payoutForm.amount) > 0 && Number(payoutForm.amount) < selectedMonthRemainingDue
+                    ? `Record Partial Payout (₹${Number(payoutForm.amount).toLocaleString('en-IN')})`
+                    : `Confirm & Sync to Expense`}
                 </button>
               </div>
             </form>
@@ -846,37 +1006,54 @@ export default function StaffPage() {
               {(!historyStaff.payments || historyStaff.payments.length === 0) ? (
                 <p className="text-xs text-slate-400 text-center py-6">No previous salary disbursements recorded yet.</p>
               ) : (
-                historyStaff.payments.map((p) => (
-                  <div key={p.id} className="py-3 flex items-center justify-between text-xs">
-                    <div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-200">
-                        {MONTH_NAMES[p.month - 1]} {p.year}
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {p.paymentMode} • {new Date(p.paymentDate).toLocaleDateString('en-GB')}
-                        {p.receiptNo && ` • ${p.receiptNo}`}
-                      </div>
-                      {p.notes && (
-                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 italic mt-0.5">
-                          Remarks: {p.notes}
+                historyStaff.payments.map((p) => {
+                  const isPart = p.amount < (historyStaff.salary || 0);
+                  return (
+                    <div key={p.id} className="py-3 flex items-center justify-between text-xs">
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {MONTH_NAMES[p.month - 1]} {p.year}
+                          </span>
+                          {isPart && (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                              Part Payment
+                            </span>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-right font-bold text-rose-600 dark:text-rose-400 text-sm">
-                        ₹{p.amount}
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          {p.paymentMode} • {new Date(p.paymentDate).toLocaleDateString('en-GB')}
+                          {p.receiptNo && ` • ${p.receiptNo}`}
+                        </div>
+                        {p.notes && (
+                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 italic mt-0.5">
+                            Remarks: {p.notes}
+                          </div>
+                        )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRevertSalaryPayment(p.id, p.amount, MONTH_NAMES[p.month - 1], p.year)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                        title="Revert / Delete this Salary Payout"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <div className="text-right">
+                          <div className="font-bold text-rose-600 dark:text-rose-400 text-sm">
+                            ₹{Number(p.amount).toLocaleString('en-IN')}
+                          </div>
+                          {isPart && (
+                            <div className="text-[10px] text-slate-400">
+                              of ₹{Number(historyStaff.salary).toLocaleString('en-IN')}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRevertSalaryPayment(p.id, p.amount, MONTH_NAMES[p.month - 1], p.year)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                          title="Revert / Delete this Salary Payout"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
