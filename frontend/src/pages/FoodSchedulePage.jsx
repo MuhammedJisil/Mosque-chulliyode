@@ -24,10 +24,14 @@ import {
   X,
   Check,
   ChevronRight,
+  ChevronDown,
   User,
   RotateCw,
   Sparkles,
-  CalendarDays
+  CalendarDays,
+  ArrowUp,
+  ArrowDown,
+  Layers
 } from 'lucide-react';
 
 export default function FoodSchedulePage() {
@@ -50,6 +54,7 @@ export default function FoodSchedulePage() {
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [swapDuty1, setSwapDuty1] = useState(null);
   const [swapDuty2Id, setSwapDuty2Id] = useState('');
+  const [swapAreaFilter, setSwapAreaFilter] = useState('All');
   const [showGenerateModal, setShowGenerateModal] = useState(false);
 
   // Single Add / Edit Form State
@@ -67,8 +72,11 @@ export default function FoodSchedulePage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Auto-generate Rotation Form
+  const [generateMode, setGenerateMode] = useState('byArea'); // 'byArea' or 'all'
+  const [orderedAreas, setOrderedAreas] = useState([]);
+  const [selectedAreaNames, setSelectedAreaNames] = useState([]);
+  const [expandedAreas, setExpandedAreas] = useState({});
   const [generateForm, setGenerateForm] = useState({
-    division: 'All',
     startDate: new Date().toISOString().split('T')[0],
     mealType: 'All Day',
     selectedMemberIds: [],
@@ -278,11 +286,26 @@ export default function FoodSchedulePage() {
     }
   };
 
+  // Group active members by Area / Division
+  const memberAreas = useMemo(() => {
+    const map = {};
+    members.filter(m => m.status === 'Active').forEach(m => {
+      const area = (m.division && m.division.trim()) || 'General / Area';
+      if (!map[area]) map[area] = [];
+      map[area].push(m);
+    });
+    return map;
+  }, [members]);
+
   // Auto-Generate Roster Handlers
   const handleOpenGenerate = () => {
     const activeMembers = members.filter(m => m.status === 'Active');
+    const areaNames = Object.keys(memberAreas);
+    setOrderedAreas(areaNames);
+    setSelectedAreaNames(areaNames);
+    setGenerateMode('byArea');
+    setExpandedAreas({});
     setGenerateForm({
-      division: 'All',
       startDate: new Date().toISOString().split('T')[0],
       mealType: 'All Day',
       selectedMemberIds: activeMembers.map(m => m.id),
@@ -290,17 +313,84 @@ export default function FoodSchedulePage() {
     setShowGenerateModal(true);
   };
 
+  const moveAreaUp = (index) => {
+    if (index <= 0) return;
+    const next = [...orderedAreas];
+    const temp = next[index - 1];
+    next[index - 1] = next[index];
+    next[index] = temp;
+    setOrderedAreas(next);
+  };
+
+  const moveAreaDown = (index) => {
+    if (index >= orderedAreas.length - 1) return;
+    const next = [...orderedAreas];
+    const temp = next[index + 1];
+    next[index + 1] = next[index];
+    next[index] = temp;
+    setOrderedAreas(next);
+  };
+
+  const swapTwoAreas = (area1, area2) => {
+    const idx1 = orderedAreas.indexOf(area1);
+    const idx2 = orderedAreas.indexOf(area2);
+    if (idx1 === -1 || idx2 === -1) return;
+    const next = [...orderedAreas];
+    next[idx1] = area2;
+    next[idx2] = area1;
+    setOrderedAreas(next);
+  };
+
+  const toggleAreaSelection = (areaName) => {
+    const isSelected = selectedAreaNames.includes(areaName);
+    const nextSelected = isSelected
+      ? selectedAreaNames.filter(a => a !== areaName)
+      : [...selectedAreaNames, areaName];
+    setSelectedAreaNames(nextSelected);
+
+    const areaHouses = memberAreas[areaName] || [];
+    const houseIds = areaHouses.map(h => h.id);
+    if (isSelected) {
+      setGenerateForm(prev => ({
+        ...prev,
+        selectedMemberIds: prev.selectedMemberIds.filter(id => !houseIds.includes(id))
+      }));
+    } else {
+      setGenerateForm(prev => ({
+        ...prev,
+        selectedMemberIds: Array.from(new Set([...prev.selectedMemberIds, ...houseIds]))
+      }));
+    }
+  };
+
   const handleGenerateRoster = async (e) => {
     e.preventDefault();
     const { startDate, mealType, selectedMemberIds } = generateForm;
-    if (!selectedMemberIds || selectedMemberIds.length === 0) {
-      toast.error('Please select at least one member/house for the rotation roster');
+
+    let finalOrderedMemberIds = [];
+
+    if (generateMode === 'byArea') {
+      // Rotate consecutively area by area according to orderedAreas
+      for (const area of orderedAreas) {
+        if (!selectedAreaNames.includes(area)) continue;
+        const areaHouses = (memberAreas[area] || []).filter(m => selectedMemberIds.includes(m.id));
+        finalOrderedMemberIds.push(...areaHouses.map(m => m.id));
+      }
+    } else {
+      finalOrderedMemberIds = members
+        .filter(m => m.status === 'Active' && selectedMemberIds.includes(m.id))
+        .map(m => m.id);
+    }
+
+    if (finalOrderedMemberIds.length === 0) {
+      toast.error('Please select at least one house/member for the rotation roster');
       return;
     }
+
     setSubmitting(true);
     try {
       const start = new Date(startDate);
-      const bulkAssignments = selectedMemberIds.map((mId, index) => {
+      const bulkAssignments = finalOrderedMemberIds.map((mId, index) => {
         const d = new Date(start);
         d.setDate(d.getDate() + index);
         const m = members.find(x => x.id === mId);
@@ -316,7 +406,7 @@ export default function FoodSchedulePage() {
       });
 
       await api.post('/api/food-duties', { bulkAssignments });
-      toast.success(`Successfully generated roster for ${bulkAssignments.length} days!`);
+      toast.success(`Successfully generated rotation roster for ${bulkAssignments.length} days!`);
       setShowGenerateModal(false);
       fetchDuties();
     } catch (err) {
@@ -1010,13 +1100,14 @@ export default function FoodSchedulePage() {
 
       {/* Add / Edit Duty Modal */}
       {showAddModal && createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-md w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:p-4 md:p-6 flex items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-md w-full my-2 sm:my-auto border border-slate-200 dark:border-slate-800 flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
                 {editingDuty ? 'Edit Food Duty Turn' : 'Schedule New Food Duty Turn'}
               </h3>
               <button
+                type="button"
                 onClick={() => setShowAddModal(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
@@ -1024,138 +1115,140 @@ export default function FoodSchedulePage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="py-4 space-y-4">
-              {/* Select Registered Member / House */}
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                  Select Registered Member (House)
-                </label>
-                <select
-                  value={formData.memberId}
-                  onChange={(e) => handleMemberSelect(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                >
-                  <option value="">-- Choose Member or Enter Custom House below --</option>
-                  {members.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.idNumber ? `[#${m.idNumber}] ` : ''}{m.name} {m.division ? `(${m.division})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Or Custom Name */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 overscroll-contain">
+                {/* Select Registered Member / House */}
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    House / Member Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Al-Bait House"
-                    value={formData.customName}
-                    onChange={(e) => setFormData({ ...formData, customName: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Phone (WhatsApp)
-                  </label>
-                  <input
-                    type="tel"
-                    placeholder="e.g. 9845012345"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Division & Date */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Division / Area
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Ward 2, Chulliyode"
-                    value={formData.division}
-                    onChange={(e) => setFormData({ ...formData, division: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Duty Date <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Meal Type & Status */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Meal Type
+                    Select Registered Member (House)
                   </label>
                   <select
-                    value={formData.mealType}
-                    onChange={(e) => setFormData({ ...formData, mealType: e.target.value })}
+                    value={formData.memberId}
+                    onChange={(e) => handleMemberSelect(e.target.value)}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   >
-                    <option value="All Day">All Day (മുഴുവൻ ഭക്ഷണം)</option>
-                    <option value="Breakfast">Breakfast (പ്രഭാതഭക്ഷണം)</option>
-                    <option value="Lunch">Lunch (ഉച്ചഭക്ഷണം)</option>
-                    <option value="Dinner">Dinner (അത്താഴം)</option>
+                    <option value="">-- Choose Member or Enter Custom House below --</option>
+                    {members.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.idNumber ? `[#${m.idNumber}] ` : ''}{m.name} {m.division ? `(${m.division})` : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
+                {/* Or Custom Name */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      House / Member Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Al-Bait House"
+                      value={formData.customName}
+                      onChange={(e) => setFormData({ ...formData, customName: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Phone (WhatsApp)
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="e.g. 9845012345"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Division & Date */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Division / Area
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Ward 2, Chulliyode"
+                      value={formData.division}
+                      onChange={(e) => setFormData({ ...formData, division: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Duty Date <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={formData.date}
+                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Meal Type & Status */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Meal Type
+                    </label>
+                    <select
+                      value={formData.mealType}
+                      onChange={(e) => setFormData({ ...formData, mealType: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      <option value="All Day">All Day (മുഴുവൻ ഭക്ഷണം)</option>
+                      <option value="Breakfast">Breakfast (പ്രഭാതഭക്ഷണം)</option>
+                      <option value="Lunch">Lunch (ഉച്ചഭക്ഷണം)</option>
+                      <option value="Dinner">Dinner (അത്താഴം)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Status
+                    </label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      <option value="Pending">Pending</option>
+                      <option value="Completed">Completed</option>
+                      <option value="Swapped">Swapped</option>
+                      <option value="Cancelled">Cancelled</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Status
+                    Notes / Special Instructions
                   </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Vegetarian preference, delivery to mosque by 12:30 PM..."
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    <option value="Pending">Pending</option>
-                    <option value="Completed">Completed</option>
-                    <option value="Swapped">Swapped</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                  Notes / Special Instructions
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Vegetarian preference, delivery to mosque by 12:30 PM..."
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-3 p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
                 >
                   Cancel
                 </button>
@@ -1176,9 +1269,9 @@ export default function FoodSchedulePage() {
 
       {/* Swap Dates Modal */}
       {showSwapModal && swapDuty1 && createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-md w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:p-4 md:p-6 flex items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-md w-full my-2 sm:my-auto border border-slate-200 dark:border-slate-800 flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
               <div className="flex items-center gap-2">
                 <ArrowLeftRight className="w-5 h-5 text-blue-600" />
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
@@ -1186,6 +1279,7 @@ export default function FoodSchedulePage() {
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setShowSwapModal(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
@@ -1193,58 +1287,94 @@ export default function FoodSchedulePage() {
               </button>
             </div>
 
-            <form onSubmit={handleExecuteSwap} className="py-4 space-y-4">
-              <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-900/40 text-xs space-y-1">
-                <span className="font-bold text-blue-900 dark:text-blue-300 block uppercase">
-                  Member 1 (Requesting Swap):
-                </span>
-                <p className="font-extrabold text-sm text-slate-900 dark:text-white">
-                  {swapDuty1.member?.name || swapDuty1.customName}
-                </p>
-                <p className="text-slate-600 dark:text-slate-400">
-                  Current Date: <span className="font-bold">{new Date(swapDuty1.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                </p>
+            <form onSubmit={handleExecuteSwap} className="flex flex-col flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 overscroll-contain">
+                <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-900/40 text-xs space-y-1">
+                  <span className="font-bold text-blue-900 dark:text-blue-300 block uppercase">
+                    Member 1 (Requesting Swap):
+                  </span>
+                  <p className="font-extrabold text-sm text-slate-900 dark:text-white">
+                    {swapDuty1.member?.name || swapDuty1.customName}
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-400">
+                    Current Date: <span className="font-bold">{new Date(swapDuty1.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  </p>
+                  <p className="text-slate-500 text-[11px]">
+                    Area: <span className="font-semibold">{swapDuty1.division || swapDuty1.member?.division || 'General'}</span>
+                  </p>
+                </div>
+
+                {/* Filter target by Area to easily swap across or within specific areas */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300">
+                      Filter Target by Area / Division
+                    </label>
+                    {swapAreaFilter && (
+                      <button
+                        type="button"
+                        onClick={() => setSwapAreaFilter('')}
+                        className="text-[11px] text-blue-600 hover:underline"
+                      >
+                        Show All
+                      </button>
+                    )}
+                  </div>
+                  <select
+                    value={swapAreaFilter}
+                    onChange={(e) => setSwapAreaFilter(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  >
+                    <option value="">All Areas ({duties.filter(d => d.id !== swapDuty1.id).length} available turns)</option>
+                    {memberAreas.map(a => (
+                      <option key={a.name} value={a.name}>
+                        {a.name} ({duties.filter(d => d.id !== swapDuty1.id && (d.division || d.member?.division || 'General') === a.name).length} turns)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                    Select Member 2 to Swap Dates With <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    required
+                    value={swapDuty2Id}
+                    onChange={(e) => setSwapDuty2Id(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  >
+                    <option value="">-- Choose scheduled member to swap with --</option>
+                    {duties
+                      .filter(d => d.id !== swapDuty1.id && (!swapAreaFilter || (d.division || d.member?.division || 'General') === swapAreaFilter))
+                      .map(d => {
+                        const dName = d.member?.name || d.customName || 'House';
+                        const dateStr = new Date(d.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+                        const areaStr = d.division || d.member?.division || 'General';
+                        return (
+                          <option key={d.id} value={d.id}>
+                            {dateStr} — {dName} [{areaStr}]
+                          </option>
+                        );
+                      })}
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    💡 Both members' dates will be exchanged instantly, and marked with 'Swapped' status. You can swap within the same area or across any other area.
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                  Select Member 2 to Swap Dates With <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  required
-                  value={swapDuty2Id}
-                  onChange={(e) => setSwapDuty2Id(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                >
-                  <option value="">-- Choose scheduled member to swap with --</option>
-                  {duties
-                    .filter(d => d.id !== swapDuty1.id)
-                    .map(d => {
-                      const dName = d.member?.name || d.customName || 'House';
-                      const dateStr = new Date(d.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-                      return (
-                        <option key={d.id} value={d.id}>
-                          {dateStr} — {dName} ({d.division || d.member?.division || 'General'})
-                        </option>
-                      );
-                    })}
-                </select>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  💡 Both members' dates will be exchanged instantly, and marked with 'Swapped' status.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-3 p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
                 <button
                   type="button"
                   onClick={() => setShowSwapModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || !swapDuty2Id}
                   className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md disabled:opacity-50 transition-all"
                 >
                   <ArrowLeftRight className="w-4 h-4" />
@@ -1259,9 +1389,9 @@ export default function FoodSchedulePage() {
 
       {/* Auto-Generate Rotation Modal */}
       {showGenerateModal && createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:p-4 md:p-6 flex items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-xl w-full my-2 sm:my-auto border border-slate-200 dark:border-slate-800 flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-blue-600" />
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
@@ -1269,6 +1399,7 @@ export default function FoodSchedulePage() {
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setShowGenerateModal(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
@@ -1276,115 +1407,290 @@ export default function FoodSchedulePage() {
               </button>
             </div>
 
-            <form onSubmit={handleGenerateRoster} className="py-4 space-y-4">
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Automatically create consecutive daily food duties for mosque staff by rotating through members.
-              </p>
+            <form onSubmit={handleGenerateRoster} className="flex flex-col flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 overscroll-contain">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Automatically create consecutive daily food duties for mosque staff. Choose whether to generate sequentially area-by-area or by custom individual houses.
+                </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Rotation Starting Date <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={generateForm.startDate}
-                    onChange={(e) => setGenerateForm({ ...generateForm, startDate: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Meal Type
-                  </label>
-                  <select
-                    value={generateForm.mealType}
-                    onChange={(e) => setGenerateForm({ ...generateForm, mealType: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                {/* Mode Selector */}
+                <div className="grid grid-cols-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setGenerateMode('area')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                      generateMode === 'area'
+                        ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    }`}
                   >
-                    <option value="All Day">All Day (മുഴുവൻ ഭക്ഷണം)</option>
-                    <option value="Breakfast">Breakfast</option>
-                    <option value="Lunch">Lunch</option>
-                    <option value="Dinner">Dinner</option>
-                  </select>
+                    <Layers className="w-4 h-4" />
+                    By Area / Division (ഏരിയ ക്രമം)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGenerateMode('individual')}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                      generateMode === 'individual'
+                        ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    Individual Selection
+                  </button>
                 </div>
-              </div>
 
-              {/* Members Selection List */}
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase">
-                    Select Houses in Rotation ({generateForm.selectedMemberIds.length} days):
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setGenerateForm({ ...generateForm, selectedMemberIds: members.map(m => m.id) })}
-                      className="text-[11px] text-blue-600 font-semibold hover:underline"
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Rotation Starting Date <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={generateForm.startDate}
+                      onChange={(e) => setGenerateForm({ ...generateForm, startDate: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Meal Type
+                    </label>
+                    <select
+                      value={generateForm.mealType}
+                      onChange={(e) => setGenerateForm({ ...generateForm, mealType: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     >
-                      Select All
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setGenerateForm({ ...generateForm, selectedMemberIds: [] })}
-                      className="text-[11px] text-slate-400 hover:underline"
-                    >
-                      Clear
-                    </button>
+                      <option value="All Day">All Day (മുഴുവൻ ഭക്ഷണം)</option>
+                      <option value="Breakfast">Breakfast</option>
+                      <option value="Lunch">Lunch</option>
+                      <option value="Dinner">Dinner</option>
+                    </select>
                   </div>
                 </div>
 
-                <div className="max-h-48 overflow-y-auto space-y-1 p-1">
-                  {members.map(m => {
-                    const isChecked = generateForm.selectedMemberIds.includes(m.id);
-                    return (
-                      <label
-                        key={m.id}
-                        className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer border transition-all ${
-                          isChecked
-                            ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              const next = e.target.checked
-                                ? [...generateForm.selectedMemberIds, m.id]
-                                : generateForm.selectedMemberIds.filter(id => id !== m.id);
-                              setGenerateForm({ ...generateForm, selectedMemberIds: next });
-                            }}
-                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="font-semibold">{m.name}</span>
-                          {m.idNumber && <span className="font-mono text-[10px] text-slate-400">#{m.idNumber}</span>}
-                        </div>
-                        {m.division && <span className="text-[10px] opacity-75">{m.division}</span>}
-                      </label>
-                    );
-                  })}
-                </div>
+                {generateMode === 'area' ? (
+                  /* ================= Area by Area Mode ================= */
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase block">
+                          Area Rotation Order ({orderedAreas.filter(a => selectedAreaNames.includes(a.name)).length} areas selected)
+                        </span>
+                        <p className="text-[11px] text-slate-500">
+                          Roster starts from Area #1, finishes all its houses, then moves to Area #2, etc. Use ↑ / ↓ or Swap to change sequence.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAreaNames(orderedAreas.map(a => a.name))}
+                          className="text-[11px] text-blue-600 font-semibold hover:underline"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAreaNames([])}
+                          className="text-[11px] text-slate-400 hover:underline"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 max-h-64 overflow-y-auto p-1">
+                      {orderedAreas.map((area, idx) => {
+                        const isSelected = selectedAreaNames.includes(area.name);
+                        const isExpanded = !!expandedAreas[area.name];
+                        return (
+                          <div
+                            key={area.name}
+                            className={`rounded-xl border transition-all ${
+                              isSelected
+                                ? 'bg-white dark:bg-slate-800 border-blue-200 dark:border-blue-800 shadow-xs'
+                                : 'bg-slate-100/70 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 opacity-60'
+                            }`}
+                          >
+                            <div className="p-2.5 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleAreaSelection(area.name)}
+                                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 shrink-0"
+                                />
+                                <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-[10px] font-bold flex items-center justify-center shrink-0">
+                                  {idx + 1}
+                                </span>
+                                <div className="min-w-0">
+                                  <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block truncate">
+                                    {area.name}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                    {area.members.length} {area.members.length === 1 ? 'house' : 'houses'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                {/* Up / Down Order Buttons */}
+                                <button
+                                  type="button"
+                                  onClick={() => moveAreaUp(idx)}
+                                  disabled={idx === 0}
+                                  title="Move Earlier in Roster"
+                                  className="p-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-25"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveAreaDown(idx)}
+                                  disabled={idx === orderedAreas.length - 1}
+                                  title="Move Later in Roster"
+                                  className="p-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-25"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+
+                                {/* Swap with dropdown */}
+                                <select
+                                  aria-label="Swap with another area"
+                                  onChange={(e) => {
+                                    if (e.target.value) {
+                                      swapTwoAreas(area.name, e.target.value);
+                                      e.target.value = '';
+                                    }
+                                  }}
+                                  defaultValue=""
+                                  className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                                >
+                                  <option value="" disabled>Swap...</option>
+                                  {orderedAreas.filter(o => o.name !== area.name).map(o => (
+                                    <option key={o.name} value={o.name}>Swap with {o.name}</option>
+                                  ))}
+                                </select>
+
+                                {/* Expand houses toggle */}
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedAreas({ ...expandedAreas, [area.name]: !isExpanded })}
+                                  className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                                >
+                                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Houses in this area */}
+                            {isExpanded && (
+                              <div className="px-3 pb-2.5 pt-1 border-t border-slate-100 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-900/30">
+                                <span className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase">
+                                  Houses in {area.name}:
+                                </span>
+                                <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-600 dark:text-slate-300">
+                                  {area.members.map(m => (
+                                    <div key={m.id} className="truncate">
+                                      • {m.name} {m.idNumber && <span className="text-slate-400 font-mono">#{m.idNumber}</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  /* ================= Individual Mode ================= */
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase">
+                        Select Houses in Rotation ({generateForm.selectedMemberIds.length} days):
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setGenerateForm({ ...generateForm, selectedMemberIds: members.map(m => m.id) })}
+                          className="text-[11px] text-blue-600 font-semibold hover:underline"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGenerateForm({ ...generateForm, selectedMemberIds: [] })}
+                          className="text-[11px] text-slate-400 hover:underline"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-56 overflow-y-auto space-y-1 p-1">
+                      {members.map(m => {
+                        const isChecked = generateForm.selectedMemberIds.includes(m.id);
+                        return (
+                          <label
+                            key={m.id}
+                            className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer border transition-all ${
+                              isChecked
+                                ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  const next = e.target.checked
+                                    ? [...generateForm.selectedMemberIds, m.id]
+                                    : generateForm.selectedMemberIds.filter(id => id !== m.id);
+                                  setGenerateForm({ ...generateForm, selectedMemberIds: next });
+                                }}
+                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="font-semibold">{m.name}</span>
+                              {m.idNumber && <span className="font-mono text-[10px] text-slate-400">#{m.idNumber}</span>}
+                            </div>
+                            {m.division && <span className="text-[10px] opacity-75">{m.division}</span>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-3 p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
                 <button
                   type="button"
                   onClick={() => setShowGenerateModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || generateForm.selectedMemberIds.length === 0}
+                  disabled={
+                    submitting ||
+                    (generateMode === 'area'
+                      ? selectedAreaNames.length === 0
+                      : generateForm.selectedMemberIds.length === 0)
+                  }
                   className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md disabled:opacity-50 transition-all"
                 >
                   <Sparkles className="w-4 h-4" />
-                  {submitting ? 'Generating...' : `Generate Roster (${generateForm.selectedMemberIds.length} Days)`}
+                  {submitting
+                    ? 'Generating...'
+                    : generateMode === 'area'
+                    ? `Generate Roster (${orderedAreas.filter(a => selectedAreaNames.includes(a.name)).reduce((sum, a) => sum + a.members.length, 0)} Days)`
+                    : `Generate Roster (${generateForm.selectedMemberIds.length} Days)`}
                 </button>
               </div>
             </form>

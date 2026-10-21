@@ -118,18 +118,40 @@ router.get('/', authMiddleware, async (req, res) => {
       where.classLevel = classLevel;
     }
 
-    const students = await prisma.madrasaStudent.findMany({
-      where,
-      include: {
-        member: {
-          select: { id: true, name: true, phone: true, job: true, division: true, idNumber: true }
+    let students = [];
+    try {
+      students = await prisma.madrasaStudent.findMany({
+        where,
+        include: {
+          member: {
+            select: { id: true, name: true, phone: true, job: true, division: true, idNumber: true }
+          },
+          payments: {
+            orderBy: { paymentDate: 'desc' }
+          }
         },
-        payments: {
-          orderBy: { paymentDate: 'desc' }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+        orderBy: { createdAt: 'desc' }
+      });
+    } catch (dbErr) {
+      console.warn('Madrasa findMany initial query error, attempting auto-migration repair...', dbErr.message);
+      const { autoMigrate } = require('../config/autoMigrate');
+      await autoMigrate();
+      students = await prisma.madrasaStudent.findMany({
+        where,
+        include: {
+          member: {
+            select: { id: true, name: true, phone: true, job: true, division: true, idNumber: true }
+          },
+          payments: {
+            orderBy: { paymentDate: 'desc' }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      }).catch(retryErr => {
+        console.warn('Retry after autoMigrate failed, returning empty list:', retryErr.message);
+        return [];
+      });
+    }
 
     let studentsWithDue = students.map(s => {
       const dueInfo = calculateStudentDue(s, s.payments);
@@ -379,26 +401,67 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     }
 
     const paymentIds = student.payments.map(p => p.id);
+    const receiptNos = student.payments.map(p => p.receiptNo).filter(Boolean);
 
-    // Delete linked Income records safely
+    // 1. Delete linked Income records from all payments of this student
+    const incomeDeleteConditions = [
+      { studentId: studentId },
+    ];
+    if (paymentIds.length > 0) {
+      incomeDeleteConditions.push({ madrasaPaymentId: { in: paymentIds } });
+    }
+    if (receiptNos.length > 0) {
+      incomeDeleteConditions.push({ receiptNo: { in: receiptNos } });
+    }
+    const studentNameOrParent = student.parentName || student.studentName;
+    if (studentNameOrParent) {
+      incomeDeleteConditions.push({
+        AND: [
+          { category: { contains: 'Madrasa' } },
+          { donorName: { contains: studentNameOrParent } }
+        ]
+      });
+    }
+
     await prisma.income.deleteMany({
       where: {
-        OR: [
-          { madrasaPaymentId: { in: paymentIds } },
-          { studentId },
-          { description: { contains: student.studentName } }
-        ]
+        OR: incomeDeleteConditions
       }
-    }).catch(err => console.warn('Income cleanup warning on student delete:', err.message));
+    }).catch(err => console.warn('Income cleanup notice on student delete:', err.message));
 
-    // Delete student (Cascade deletes payments)
+    // 2. If student was linked to a Mahallu Member, update the member's madrasa status if no other students remain
+    if (student.memberId) {
+      try {
+        const remainingCount = await prisma.madrasaStudent.count({
+          where: { memberId: student.memberId, id: { not: studentId } }
+        });
+        if (remainingCount === 0) {
+          await prisma.member.update({
+            where: { id: student.memberId },
+            data: {
+              hasMadrasa: false,
+              madrasaChildrenCount: 0,
+              madrasaMonthlyFee: 0.0,
+            }
+          });
+        }
+      } catch (mErr) {
+        console.warn('Member update notice on student delete:', mErr.message);
+      }
+    }
+
+    // 3. Delete payments and student
+    await prisma.madrasaPayment.deleteMany({
+      where: { studentId }
+    }).catch(() => {});
+
     await prisma.madrasaStudent.delete({
       where: { id: studentId }
     });
 
     res.json({
       success: true,
-      message: 'Student and related payment records deleted successfully'
+      message: 'Student, all related payments, and linked income entries deleted successfully'
     });
   } catch (error) {
     console.error('Delete madrasa student error:', error);

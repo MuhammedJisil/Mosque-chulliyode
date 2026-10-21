@@ -1137,8 +1137,8 @@ export default function MadrasaPage() {
       {/* MODAL 1: ADD / EDIT MADRASA RECORD (SIMPLE)              */}
       {/* ======================================================== */}
       {showAddModal && createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-auto shrink-0">
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:p-4 md:p-6 flex items-start sm:items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-2 sm:my-auto shrink-0">
             {/* Pinned Header */}
             <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900 z-10">
               <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
@@ -1440,8 +1440,8 @@ export default function MadrasaPage() {
       {/* MODAL 2: RECORD MULTI-MONTH FEE PAYMENT                 */}
       {/* ======================================================== */}
       {showPaymentModal && activePayingStudent && createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-auto shrink-0">
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:p-4 md:p-6 flex items-start sm:items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-2 sm:my-auto shrink-0">
             {/* Pinned Header */}
             <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900 z-10">
               <div>
@@ -1635,8 +1635,8 @@ export default function MadrasaPage() {
       {/* MODAL 3: PAYMENT HISTORY & REVERT                       */}
       {/* ======================================================== */}
       {showHistoryModal && historyStudent && createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-auto shrink-0">
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:p-4 md:p-6 flex items-start sm:items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-2 sm:my-auto shrink-0">
             {/* Pinned Header */}
             <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900 z-10">
               <div>
@@ -1735,8 +1735,8 @@ export default function MadrasaPage() {
       {/* MODAL 4: FULL DETAILS & 12-MONTH CALENDAR GRID          */}
       {/* ======================================================== */}
       {showDetailModal && detailStudent && createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex items-start sm:items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-auto shrink-0">
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:p-4 md:p-6 flex items-start sm:items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden my-2 sm:my-auto shrink-0">
             {/* Pinned Header */}
             <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white dark:bg-slate-900 z-10">
               <div>

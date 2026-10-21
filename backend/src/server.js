@@ -18,17 +18,22 @@ const madrasaRoutes = require('./routes/madrasa');
 
 const app = express();
 
-// Ensure PostgreSQL database schema has all columns and tables on Render / production
+const { autoMigrate } = require('./config/autoMigrate');
+
+// Ensure PostgreSQL/SQLite database schema has all columns and tables automatically
 if (process.env.RENDER || (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgres'))) {
   try {
     const { execSync } = require('child_process');
     console.log('🚀 Checking and syncing Neon PostgreSQL schema with Prisma...');
-    execSync('npx prisma db push --schema=prisma/schema.postgresql.prisma --accept-data-loss', { stdio: 'inherit' });
+    execSync('npx prisma db push --schema=prisma/schema.postgresql.prisma --accept-data-loss --skip-generate', { stdio: 'inherit' });
     console.log('✅ Neon PostgreSQL database schema is verified and up-to-date.');
   } catch (err) {
-    console.warn('⚠️ Warning during initial database sync check:', err.message);
+    console.warn('⚠️ Notice during initial prisma db push check:', err.message);
   }
 }
+
+// Self-healing direct SQL migration check
+autoMigrate().catch(err => console.warn('autoMigrate startup notice:', err.message));
 
 // Default to 5001. If PORT is set to 5000, redirect to 5001 because macOS Control Center AirPlay Receiver occupies 5000
 const rawPort = parseInt(process.env.PORT, 10);
