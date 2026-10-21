@@ -190,14 +190,17 @@ export default function IncomePage() {
     });
 
     const columns = ['Date', 'Donor / Member Name', 'Particulars / Description', 'Category', 'Payment Mode', 'Amount (Rs.)'];
-    const rows = dataToExport.map(item => [
-      new Date(item.date).toLocaleDateString('en-GB'),
-      item.donorName || '-',
-      item.description || item.category || '-',
-      item.category || '-',
-      item.paymentMode || 'Cash',
-      'Rs. ' + Number(item.amount).toLocaleString('en-IN')
-    ]);
+    const rows = dataToExport.map(item => {
+      const cleanParticulars = (item.description ? item.description.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() : '') || item.category || '-';
+      return [
+        new Date(item.date).toLocaleDateString('en-GB'),
+        item.donorName || '-',
+        cleanParticulars,
+        item.category || '-',
+        item.paymentMode || 'Cash',
+        'Rs. ' + Number(item.amount).toLocaleString('en-IN')
+      ];
+    });
 
     const total = dataToExport.reduce((acc, c) => acc + c.amount, 0);
 

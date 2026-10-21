@@ -123,6 +123,15 @@ router.get('/', authMiddleware, async (req, res) => {
       where.division = division;
     }
 
+    // Auto-transition members whose endDate is reached or past to Inactive in database
+    await prisma.member.updateMany({
+      where: {
+        status: 'Active',
+        endDate: { not: null, lte: new Date() }
+      },
+      data: { status: 'Inactive' }
+    }).catch(() => {});
+
     const members = await prisma.member.findMany({
       where,
       include: {
@@ -134,9 +143,12 @@ router.get('/', authMiddleware, async (req, res) => {
     });
 
     let membersWithDue = members.map(m => {
+      const isPastEndDate = m.endDate && new Date(m.endDate) <= new Date();
+      const effectiveStatus = isPastEndDate ? 'Inactive' : m.status;
       const dueInfo = calculateMemberDue(m, m.payments);
       return {
         ...m,
+        status: effectiveStatus,
         ...dueInfo,
       };
     });
@@ -242,6 +254,9 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     const isFamilyChecked = Boolean(hasFamily);
+    const parsedEndDate = endDate ? new Date(endDate) : null;
+    const finalStatus = (parsedEndDate && parsedEndDate <= new Date()) ? 'Inactive' : (status || 'Active');
+
     const newMember = await prisma.member.create({
       data: {
         name,
@@ -255,10 +270,10 @@ router.post('/', authMiddleware, async (req, res) => {
         childrenCount: isFamilyChecked ? (parseInt(childrenCount) || 0) : 0,
         familyDetails: isFamilyChecked ? (familyDetails || '') : '',
         joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
-        endDate: endDate ? new Date(endDate) : null,
+        endDate: parsedEndDate,
         monthlyDonation: parseFloat(monthlyDonation) || 100,
         openingBalance: parseFloat(openingBalance) || 0,
-        status: status || 'Active',
+        status: finalStatus,
         hasMadrasa: Boolean(hasMadrasa),
         madrasaChildrenCount: parseInt(madrasaChildrenCount) || 0,
         madrasaMonthlyFee: parseFloat(madrasaMonthlyFee) || 0,
@@ -302,6 +317,12 @@ router.put('/:id', authMiddleware, async (req, res) => {
       notes
     } = req.body;
 
+    const parsedEndDate = endDate !== undefined ? (endDate ? new Date(endDate) : null) : undefined;
+    let finalStatus = status;
+    if (parsedEndDate && parsedEndDate <= new Date()) {
+      finalStatus = 'Inactive';
+    }
+
     const dataToUpdate = {
       name,
       address,
@@ -310,10 +331,10 @@ router.put('/:id', authMiddleware, async (req, res) => {
       division: division !== undefined ? division : undefined,
       idNumber: idNumber !== undefined ? idNumber : undefined,
       ...(joiningDate ? { joiningDate: new Date(joiningDate) } : {}),
-      ...(endDate !== undefined ? { endDate: endDate ? new Date(endDate) : null } : {}),
+      ...(endDate !== undefined ? { endDate: parsedEndDate } : {}),
       ...(monthlyDonation !== undefined ? { monthlyDonation: parseFloat(monthlyDonation) } : {}),
       ...(openingBalance !== undefined ? { openingBalance: parseFloat(openingBalance) } : {}),
-      ...(status !== undefined ? { status } : {}),
+      ...(finalStatus !== undefined ? { status: finalStatus } : {}),
       ...(hasMadrasa !== undefined ? { hasMadrasa: Boolean(hasMadrasa) } : {}),
       ...(madrasaChildrenCount !== undefined ? { madrasaChildrenCount: parseInt(madrasaChildrenCount) } : {}),
       ...(madrasaMonthlyFee !== undefined ? { madrasaMonthlyFee: parseFloat(madrasaMonthlyFee) } : {}),
@@ -478,7 +499,6 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
         let incomeDesc = `Monthly donation for ${numMonths} month(s): ${monthListText}.`;
         if (totalMadrasa > 0) incomeDesc += ` (Madrasa: ₹${totalMadrasa})`;
         if (totalOpening > 0) incomeDesc += ` (Opening Balance: ₹${totalOpening})`;
-        if (notes) incomeDesc += ` Note: ${notes}`;
 
         await tx.income.create({
           data: {

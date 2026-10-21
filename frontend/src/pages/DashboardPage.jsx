@@ -83,11 +83,14 @@ export default function DashboardPage({ onNavigate }) {
 
       const columns = ['Date', 'Particulars', 'Category', 'Mode', 'Income (Rs.)', 'Expense (Rs.)', 'Balance (Rs.)'];
       const rows = ledger.map(entry => {
-        const particulars = entry.title || (
+        let particulars = entry.title || (
           entry.type === 'INCOME'
             ? (entry.donorName || entry.description || entry.category || 'Income')
             : (entry.purpose ? (entry.paidTo ? `${entry.purpose} (${entry.paidTo})` : entry.purpose) : (entry.paidTo || entry.category || 'Expense'))
         );
+        if (particulars) {
+          particulars = particulars.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() || particulars;
+        }
         return [
           new Date(entry.date).toLocaleDateString('en-GB'),
           particulars,

@@ -197,12 +197,12 @@ router.get('/statement', authMiddleware, async (req, res) => {
     const combined = [
       ...incomes.map(inc => {
         const donor = inc.donorName ? inc.donorName.trim() : '';
-        const desc = inc.description ? inc.description.trim() : '';
+        const cleanDesc = inc.description ? inc.description.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() : '';
         let title = '';
-        if (donor && desc) {
-          title = `${donor} - ${desc}`;
+        if (donor && cleanDesc) {
+          title = `${donor} - ${cleanDesc}`;
         } else {
-          title = donor || desc || inc.category || 'Income';
+          title = donor || cleanDesc || inc.category || 'Income';
         }
 
         return {
@@ -210,7 +210,7 @@ router.get('/statement', authMiddleware, async (req, res) => {
           date: inc.date,
           title,
           donorName: inc.donorName,
-          description: inc.description,
+          description: cleanDesc,
           category: inc.category,
           paymentMode: inc.paymentMode,
           receiptNo: inc.receiptNo,
@@ -222,12 +222,12 @@ router.get('/statement', authMiddleware, async (req, res) => {
       ...expenses.map(exp => {
         const purp = exp.purpose ? exp.purpose.trim() : '';
         const paid = exp.paidTo ? exp.paidTo.trim() : '';
-        const desc = exp.description ? exp.description.trim() : '';
+        const cleanDesc = exp.description ? exp.description.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() : '';
         let title = '';
         if (purp && paid) {
           title = `${purp} (${paid})`;
         } else {
-          title = purp || paid || desc || exp.category || 'Expense';
+          title = purp || paid || cleanDesc || exp.category || 'Expense';
         }
 
         return {

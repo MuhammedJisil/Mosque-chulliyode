@@ -72,7 +72,7 @@ export default function FoodSchedulePage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Auto-generate Rotation Form
-  const [generateMode, setGenerateMode] = useState('byArea'); // 'byArea' or 'all'
+  const [generateMode, setGenerateMode] = useState('area'); // 'area' or 'individual'
   const [orderedAreas, setOrderedAreas] = useState([]);
   const [selectedAreaNames, setSelectedAreaNames] = useState([]);
   const [expandedAreas, setExpandedAreas] = useState({});
@@ -300,10 +300,13 @@ export default function FoodSchedulePage() {
   // Auto-Generate Roster Handlers
   const handleOpenGenerate = () => {
     const activeMembers = members.filter(m => m.status === 'Active');
-    const areaNames = Object.keys(memberAreas);
-    setOrderedAreas(areaNames);
-    setSelectedAreaNames(areaNames);
-    setGenerateMode('byArea');
+    const areaList = Object.keys(memberAreas).map(areaName => ({
+      name: areaName,
+      members: memberAreas[areaName] || []
+    }));
+    setOrderedAreas(areaList);
+    setSelectedAreaNames(areaList.map(a => a.name));
+    setGenerateMode('area');
     setExpandedAreas({});
     setGenerateForm({
       startDate: new Date().toISOString().split('T')[0],
@@ -331,13 +334,14 @@ export default function FoodSchedulePage() {
     setOrderedAreas(next);
   };
 
-  const swapTwoAreas = (area1, area2) => {
-    const idx1 = orderedAreas.indexOf(area1);
-    const idx2 = orderedAreas.indexOf(area2);
+  const swapTwoAreas = (area1Name, area2Name) => {
+    const idx1 = orderedAreas.findIndex(a => a.name === area1Name);
+    const idx2 = orderedAreas.findIndex(a => a.name === area2Name);
     if (idx1 === -1 || idx2 === -1) return;
     const next = [...orderedAreas];
-    next[idx1] = area2;
-    next[idx2] = area1;
+    const temp = next[idx1];
+    next[idx1] = next[idx2];
+    next[idx2] = temp;
     setOrderedAreas(next);
   };
 
@@ -369,11 +373,11 @@ export default function FoodSchedulePage() {
 
     let finalOrderedMemberIds = [];
 
-    if (generateMode === 'byArea') {
+    if (generateMode === 'area') {
       // Rotate consecutively area by area according to orderedAreas
       for (const area of orderedAreas) {
-        if (!selectedAreaNames.includes(area)) continue;
-        const areaHouses = (memberAreas[area] || []).filter(m => selectedMemberIds.includes(m.id));
+        if (!selectedAreaNames.includes(area.name)) continue;
+        const areaHouses = (area.members || []).filter(m => selectedMemberIds.includes(m.id));
         finalOrderedMemberIds.push(...areaHouses.map(m => m.id));
       }
     } else {

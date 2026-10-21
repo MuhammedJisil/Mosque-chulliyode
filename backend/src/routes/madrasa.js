@@ -164,10 +164,22 @@ router.get('/', authMiddleware, async (req, res) => {
       });
     }
 
+    // Auto-transition students whose endDate is reached or past to Inactive in database
+    await prisma.madrasaStudent.updateMany({
+      where: {
+        status: 'Active',
+        endDate: { not: null, lte: new Date() }
+      },
+      data: { status: 'Inactive' }
+    }).catch(() => {});
+
     let studentsWithDue = students.map(s => {
+      const isPastEndDate = s.endDate && new Date(s.endDate) <= new Date();
+      const effectiveStatus = isPastEndDate ? 'Inactive' : s.status;
       const dueInfo = calculateStudentDue(s, s.payments);
       return {
         ...s,
+        status: effectiveStatus,
         ...dueInfo,
       };
     });
@@ -298,6 +310,9 @@ router.post('/', authMiddleware, async (req, res) => {
       ? studentName.trim()
       : finalParentName;
 
+    const parsedEndDate = endDate ? new Date(endDate) : null;
+    const finalStatus = (parsedEndDate && parsedEndDate <= new Date()) ? 'Inactive' : (status || 'Active');
+
     const newStudent = await prisma.madrasaStudent.create({
       data: {
         memberId: parsedMemberId,
@@ -314,8 +329,8 @@ router.post('/', authMiddleware, async (req, res) => {
         feePerStudent: perFee,
         openingBalance: parseFloat(openingBalance) || 0,
         admissionDate: admissionDate ? new Date(admissionDate) : new Date(),
-        endDate: endDate ? new Date(endDate) : null,
-        status: status || 'Active',
+        endDate: parsedEndDate,
+        status: finalStatus,
         notes: notes || '',
       },
       include: {
@@ -370,27 +385,33 @@ router.put('/:id', authMiddleware, async (req, res) => {
       calcMonthlyFee = parseFloat(monthlyFee) || 0;
     }
 
-    const updated = await prisma.madrasaStudent.update({
-      where: { id: parseInt(req.params.id) },
-      data: {
-        memberId: parsedMemberId,
-        parentName: parentName !== undefined ? parentName.trim() : undefined,
-        parentPhone: parentPhone !== undefined ? parentPhone.trim() : undefined,
-        address: address !== undefined ? address.trim() : undefined,
-        job: job !== undefined ? job.trim() : undefined,
-        division: division !== undefined ? division.trim() : undefined,
-        studentsCount: count,
-        studentName: studentName !== undefined ? studentName.trim() : undefined,
-        admissionNo: admissionNo !== undefined ? (admissionNo ? String(admissionNo).trim() : null) : undefined,
-        classLevel: classLevel !== undefined ? classLevel : undefined,
-        monthlyFee: calcMonthlyFee,
-        feePerStudent: perFee,
-        openingBalance: openingBalance !== undefined ? (parseFloat(openingBalance) || 0) : undefined,
-        admissionDate: admissionDate ? new Date(admissionDate) : undefined,
-        ...(endDate !== undefined ? { endDate: endDate ? new Date(endDate) : null } : {}),
-        status: status !== undefined ? status : undefined,
-        notes: notes !== undefined ? notes : undefined,
-      },
+        const parsedEndDate = endDate !== undefined ? (endDate ? new Date(endDate) : null) : undefined;
+        let finalStatus = status;
+        if (parsedEndDate && parsedEndDate <= new Date()) {
+          finalStatus = 'Inactive';
+        }
+
+        const updated = await prisma.madrasaStudent.update({
+          where: { id: parseInt(req.params.id) },
+          data: {
+            memberId: parsedMemberId,
+            parentName: parentName !== undefined ? parentName.trim() : undefined,
+            parentPhone: parentPhone !== undefined ? parentPhone.trim() : undefined,
+            address: address !== undefined ? address.trim() : undefined,
+            job: job !== undefined ? job.trim() : undefined,
+            division: division !== undefined ? division.trim() : undefined,
+            studentsCount: count,
+            studentName: studentName !== undefined ? studentName.trim() : undefined,
+            admissionNo: admissionNo !== undefined ? (admissionNo ? String(admissionNo).trim() : null) : undefined,
+            classLevel: classLevel !== undefined ? classLevel : undefined,
+            monthlyFee: calcMonthlyFee,
+            feePerStudent: perFee,
+            openingBalance: openingBalance !== undefined ? (parseFloat(openingBalance) || 0) : undefined,
+            admissionDate: admissionDate ? new Date(admissionDate) : undefined,
+            ...(endDate !== undefined ? { endDate: parsedEndDate } : {}),
+            status: finalStatus !== undefined ? finalStatus : undefined,
+            notes: notes !== undefined ? notes : undefined,
+          },
       include: {
         member: { select: { id: true, name: true, phone: true, job: true, division: true, address: true } }
       }
@@ -581,7 +602,6 @@ router.post('/:id/pay', authMiddleware, async (req, res) => {
         const monthListText = months.map(m => `${MONTH_NAMES[m.month - 1]} ${m.year}`).join(', ');
         let incomeDesc = `Madrasa fee for ${numMonths} month(s): ${monthListText}. Student: ${student.studentName} (${student.classLevel || 'General'})`;
         if (totalOpening > 0) incomeDesc += ` (Opening Balance: ₹${totalOpening})`;
-        if (notes) incomeDesc += ` Note: ${notes}`;
 
         await tx.income.create({
           data: {

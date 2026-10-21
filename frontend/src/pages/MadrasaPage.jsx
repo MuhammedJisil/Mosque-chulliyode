@@ -311,8 +311,11 @@ export default function MadrasaPage() {
     }
     setSubmitting(true);
     try {
+      const isEndDateOver = formData.endDate && new Date(formData.endDate) <= new Date();
+      const finalStatus = isEndDateOver ? 'Inactive' : formData.status;
       const payload = {
         ...formData,
+        status: finalStatus,
         memberId: formData.memberId ? parseInt(formData.memberId) : null,
         address: formData.address || null,
         endDate: formData.endDate ? formData.endDate : null,
@@ -1443,7 +1446,7 @@ export default function MadrasaPage() {
                     {formData.endDate && (
                       <button
                         type="button"
-                        onClick={() => setFormData({ ...formData, endDate: '' })}
+                        onClick={() => setFormData(prev => ({ ...prev, endDate: '', status: 'Active' }))}
                         className="text-[11px] text-rose-500 hover:underline font-medium"
                       >
                         Clear Date
@@ -1453,7 +1456,15 @@ export default function MadrasaPage() {
                   <input
                     type="date"
                     value={formData.endDate || ''}
-                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const isOver = val && new Date(val) <= new Date();
+                      setFormData(prev => ({
+                        ...prev,
+                        endDate: val,
+                        status: isOver ? 'Inactive' : prev.status
+                      }));
+                    }}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
