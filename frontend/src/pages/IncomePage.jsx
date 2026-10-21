@@ -189,14 +189,14 @@ export default function IncomePage() {
       return (d.getMonth() + 1 === month) && (d.getFullYear() === year);
     });
 
-    const columns = ['Date', 'Donor Name', 'Category', 'Payment Mode', 'Phone', 'Amount (₹)'];
+    const columns = ['Date', 'Donor / Member Name', 'Particulars / Description', 'Category', 'Payment Mode', 'Amount (Rs.)'];
     const rows = dataToExport.map(item => [
       new Date(item.date).toLocaleDateString('en-GB'),
-      item.donorName,
-      item.category,
-      item.paymentMode,
-      item.donorPhone || '-',
-      '₹' + Number(item.amount).toLocaleString('en-IN')
+      item.donorName || '-',
+      item.description || item.category || '-',
+      item.category || '-',
+      item.paymentMode || 'Cash',
+      'Rs. ' + Number(item.amount).toLocaleString('en-IN')
     ]);
 
     const total = dataToExport.reduce((acc, c) => acc + c.amount, 0);
@@ -208,7 +208,7 @@ export default function IncomePage() {
       columns,
       rows,
       summaryRows: [
-        { label: 'Total Collections:', value: '₹' + Number(total).toLocaleString('en-IN'), bold: true, highlight: true }
+        { label: 'Total Collections:', value: 'Rs. ' + Number(total).toLocaleString('en-IN'), bold: true, highlight: true }
       ],
       fileName: `Masjid_Al_Noor_Income_${periodLabel.replace(/\s+/g, '_')}.pdf`
     });
@@ -802,13 +802,14 @@ export default function IncomePage() {
 
       {/* Add / Edit Income Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-xl w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:p-4 md:p-6 flex items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-xl w-full my-2 sm:my-auto border border-slate-200 dark:border-slate-800 flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
                 {editingItem ? 'Edit Income Record' : 'Record New Income'}
               </h3>
               <button
+                type="button"
                 onClick={() => setShowAddModal(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
@@ -816,104 +817,112 @@ export default function IncomePage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="py-4 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Donor Name */}
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Donor Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 overscroll-contain">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Category Dropdown (with custom category addition, edit & delete) */}
+                  <CategoryDropdown
+                    label="Category"
+                    value={formData.category}
+                    onChange={(cat) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        category: cat,
+                        donorName: (!prev.donorName || prev.donorName.trim() === '') ? cat : prev.donorName
+                      }));
+                    }}
+                    defaultCategories={DEFAULT_INCOME_CATEGORIES}
+                    customCategories={customCategories}
+                    onCategoryAdded={fetchCustomCategories}
+                    onCategoryUpdated={fetchCustomCategories}
+                    onCategoryDeleted={fetchCustomCategories}
+                    type="INCOME"
                     required
-                    placeholder="e.g. Haji Farooq or Jumma Collection"
-                    value={formData.donorName}
-                    onChange={(e) => setFormData({ ...formData, donorName: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
+
+                  {/* Donor Name */}
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Donor Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Haji Farooq or General Donor"
+                      value={formData.donorName}
+                      onChange={(e) => setFormData({ ...formData, donorName: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
                 </div>
 
-                {/* Donor Phone */}
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    placeholder="e.g. 9845012345"
-                    value={formData.donorPhone}
-                    onChange={(e) => setFormData({ ...formData, donorPhone: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Donor Phone */}
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="e.g. 9845012345"
+                      value={formData.donorPhone}
+                      onChange={(e) => setFormData({ ...formData, donorPhone: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
 
-              {/* Address */}
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                  Donor Address / Location
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. House #14, Bilal Street"
-                  value={formData.donorAddress}
-                  onChange={(e) => setFormData({ ...formData, donorAddress: e.target.value })}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Category Dropdown (with custom category addition, edit & delete) */}
-                <CategoryDropdown
-                  label="Category"
-                  value={formData.category}
-                  onChange={(cat) => setFormData({ ...formData, category: cat })}
-                  defaultCategories={DEFAULT_INCOME_CATEGORIES}
-                  customCategories={customCategories}
-                  onCategoryAdded={fetchCustomCategories}
-                  onCategoryUpdated={fetchCustomCategories}
-                  onCategoryDeleted={fetchCustomCategories}
-                  type="INCOME"
-                  required
-                />
-
-                {/* Amount */}
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Amount (IN ₹) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    min="1"
-                    required
-                    placeholder="e.g. 5000"
-                    value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    className="w-full px-3 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Payment Mode (Image 2) */}
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Payment Mode <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={formData.paymentMode}
-                    onChange={(e) => setFormData({ ...formData, paymentMode: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    {PAYMENT_MODES.map((mode, i) => (
-                      <option key={i} value={mode}>{mode}</option>
-                    ))}
-                  </select>
+                  {/* Address */}
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Donor Address / Location
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. House #14, Bilal Street"
+                      value={formData.donorAddress}
+                      onChange={(e) => setFormData({ ...formData, donorAddress: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
                 </div>
 
-                {/* Date */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Amount */}
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Amount (IN ₹) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="1"
+                      required
+                      placeholder="e.g. 5000"
+                      value={formData.amount}
+                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                      className="w-full px-3 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Payment Mode */}
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Payment Mode <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={formData.paymentMode}
+                      onChange={(e) => setFormData({ ...formData, paymentMode: e.target.value })}
+                      required
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      {PAYMENT_MODES.map((mode, i) => (
+                        <option key={i} value={mode}>{mode}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Receipt Date */}
                 <div>
                   <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
                     Receipt Date
@@ -925,77 +934,77 @@ export default function IncomePage() {
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
-              </div>
 
-              {/* Description (Optional) */}
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                  Description / Remarks (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Additional notes, receipt reference, or purpose..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              {/* Custom Fields (Name & Value Options) */}
-              <CustomFieldInput
-                fields={formData.customFields}
-                onChange={(fields) => setFormData({ ...formData, customFields: fields })}
-              />
-
-              {/* Proof Image (Camera or Device File) */}
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300">
-                      Receipt / Proof Image
-                    </label>
-                    <p className="text-[11px] text-slate-400">Capture with camera or choose from device</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowCameraModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 transition-colors"
-                  >
-                    <Camera className="w-3.5 h-3.5 text-emerald-600" />
-                    {formData.proofImage ? 'Change Proof' : 'Attach Proof'}
-                  </button>
+                {/* Description (Optional) */}
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                    Description / Remarks (Optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Additional notes, receipt reference, or purpose..."
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
                 </div>
 
-                {formData.proofImage && (
-                  <div className="mt-3 flex items-center gap-3 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-                    <img
-                      src={formData.proofImage}
-                      alt="Proof"
-                      className="w-12 h-12 rounded-lg object-cover border border-slate-200"
-                    />
-                    <div className="flex-1">
-                      <p className="text-xs font-medium text-slate-700 dark:text-slate-200">Image Attached</p>
-                      <button
-                        type="button"
-                        onClick={() => { setProofModalUrl(formData.proofImage); setShowProofModal(true); }}
-                        className="text-[11px] text-emerald-600 hover:underline"
-                      >
-                        Preview Image
-                      </button>
+                {/* Custom Fields (Name & Value Options) */}
+                <CustomFieldInput
+                  fields={formData.customFields}
+                  onChange={(fields) => setFormData({ ...formData, customFields: fields })}
+                />
+
+                {/* Proof Image (Camera or Device File) */}
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300">
+                        Receipt / Proof Image
+                      </label>
+                      <p className="text-[11px] text-slate-400">Capture with camera or choose from device</p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, proofImage: null })}
-                      className="text-xs text-rose-500 hover:underline px-2"
+                      onClick={() => setShowCameraModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 transition-colors"
                     >
-                      Remove
+                      <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                      {formData.proofImage ? 'Change Proof' : 'Attach Proof'}
                     </button>
                   </div>
-                )}
+
+                  {formData.proofImage && (
+                    <div className="mt-3 flex items-center gap-3 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                      <img
+                        src={formData.proofImage}
+                        alt="Proof"
+                        className="w-12 h-12 rounded-lg object-cover border border-slate-200"
+                      />
+                      <div className="flex-1">
+                        <p className="text-xs font-medium text-slate-700 dark:text-slate-200">Image Attached</p>
+                        <button
+                          type="button"
+                          onClick={() => { setProofModalUrl(formData.proofImage); setShowProofModal(true); }}
+                          className="text-[11px] text-emerald-600 hover:underline"
+                        >
+                          Preview Image
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, proofImage: null })}
+                        className="text-xs text-rose-500 hover:underline px-2"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Form Actions */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-3 p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}

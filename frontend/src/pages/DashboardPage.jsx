@@ -82,15 +82,22 @@ export default function DashboardPage({ onNavigate }) {
       }
 
       const columns = ['Date', 'Particulars', 'Category', 'Mode', 'Income (Rs.)', 'Expense (Rs.)', 'Balance (Rs.)'];
-      const rows = ledger.map(entry => [
-        new Date(entry.date).toLocaleDateString('en-GB'),
-        entry.title || (entry.type === 'INCOME' ? 'General Income' : 'General Expense'),
-        entry.category || '-',
-        entry.paymentMode || 'Cash',
-        entry.type === 'INCOME' ? fmtPdfAmount(entry.incomeAmount) : '-',
-        entry.type === 'EXPENSE' ? fmtPdfAmount(entry.expenseAmount) : '-',
-        fmtPdfAmount(entry.balance)
-      ]);
+      const rows = ledger.map(entry => {
+        const particulars = entry.title || (
+          entry.type === 'INCOME'
+            ? (entry.donorName || entry.description || entry.category || 'Income')
+            : (entry.purpose ? (entry.paidTo ? `${entry.purpose} (${entry.paidTo})` : entry.purpose) : (entry.paidTo || entry.category || 'Expense'))
+        );
+        return [
+          new Date(entry.date).toLocaleDateString('en-GB'),
+          particulars,
+          entry.category || '-',
+          entry.paymentMode || 'Cash',
+          entry.type === 'INCOME' ? fmtPdfAmount(entry.incomeAmount) : '-',
+          entry.type === 'EXPENSE' ? fmtPdfAmount(entry.expenseAmount) : '-',
+          fmtPdfAmount(entry.balance)
+        ];
+      });
 
       const summaryRows = [
         { label: 'Opening Balance (Prior to Period):', value: fmtPdfAmount(summary.openingBalance), bold: true },

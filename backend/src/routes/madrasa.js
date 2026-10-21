@@ -22,6 +22,17 @@ function calculateStudentDue(student, payments = []) {
     startMonth = 1;
   }
 
+  // Determine end month/year: If student discontinued/stopped, dues stop at endDate
+  let endYear = currentYear;
+  let endMonth = currentMonth;
+  if (student.endDate) {
+    const eDate = new Date(student.endDate);
+    if (!isNaN(eDate.getFullYear())) {
+      endYear = eDate.getFullYear();
+      endMonth = eDate.getMonth() + 1;
+    }
+  }
+
   // Create set of paid (year-month) keys
   const paidSet = new Set(payments.map(p => `${p.year}-${p.month}`));
 
@@ -29,7 +40,7 @@ function calculateStudentDue(student, payments = []) {
   let y = startYear;
   let m = startMonth;
 
-  while (y < currentYear || (y === currentYear && m <= currentMonth)) {
+  while (y < endYear || (y === endYear && m <= endMonth)) {
     const key = `${y}-${m}`;
     if (!paidSet.has(key)) {
       dueMonths.push({
@@ -236,6 +247,7 @@ router.post('/', authMiddleware, async (req, res) => {
       memberId,
       parentName,
       parentPhone,
+      address,
       job,
       division,
       studentsCount = 1,
@@ -246,12 +258,14 @@ router.post('/', authMiddleware, async (req, res) => {
       feePerStudent = 200,
       openingBalance = 0,
       admissionDate,
+      endDate,
       status = 'Active',
       notes
     } = req.body;
 
     let finalParentName = parentName ? parentName.trim() : '';
     let finalParentPhone = parentPhone ? String(parentPhone).trim() : '';
+    let finalAddress = address ? address.trim() : '';
     let finalJob = job || '';
     let finalDivision = division || '';
 
@@ -263,6 +277,7 @@ router.post('/', authMiddleware, async (req, res) => {
         if (linkedMember) {
           if (!finalParentName) finalParentName = linkedMember.name;
           if (!finalParentPhone) finalParentPhone = linkedMember.phone || '';
+          if (!finalAddress) finalAddress = linkedMember.address || '';
           if (!finalJob) finalJob = linkedMember.job || '';
           if (!finalDivision) finalDivision = linkedMember.division || '';
         }
@@ -288,6 +303,7 @@ router.post('/', authMiddleware, async (req, res) => {
         memberId: parsedMemberId,
         parentName: finalParentName,
         parentPhone: finalParentPhone,
+        address: finalAddress,
         job: finalJob,
         division: finalDivision,
         studentsCount: count,
@@ -298,11 +314,12 @@ router.post('/', authMiddleware, async (req, res) => {
         feePerStudent: perFee,
         openingBalance: parseFloat(openingBalance) || 0,
         admissionDate: admissionDate ? new Date(admissionDate) : new Date(),
+        endDate: endDate ? new Date(endDate) : null,
         status: status || 'Active',
         notes: notes || '',
       },
       include: {
-        member: { select: { id: true, name: true, phone: true, job: true, division: true } }
+        member: { select: { id: true, name: true, phone: true, job: true, division: true, address: true } }
       }
     });
 
@@ -324,6 +341,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       memberId,
       parentName,
       parentPhone,
+      address,
       job,
       division,
       studentsCount,
@@ -334,6 +352,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       feePerStudent,
       openingBalance,
       admissionDate,
+      endDate,
       status,
       notes
     } = req.body;
@@ -357,6 +376,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
         memberId: parsedMemberId,
         parentName: parentName !== undefined ? parentName.trim() : undefined,
         parentPhone: parentPhone !== undefined ? parentPhone.trim() : undefined,
+        address: address !== undefined ? address.trim() : undefined,
         job: job !== undefined ? job.trim() : undefined,
         division: division !== undefined ? division.trim() : undefined,
         studentsCount: count,
@@ -367,11 +387,12 @@ router.put('/:id', authMiddleware, async (req, res) => {
         feePerStudent: perFee,
         openingBalance: openingBalance !== undefined ? (parseFloat(openingBalance) || 0) : undefined,
         admissionDate: admissionDate ? new Date(admissionDate) : undefined,
+        ...(endDate !== undefined ? { endDate: endDate ? new Date(endDate) : null } : {}),
         status: status !== undefined ? status : undefined,
         notes: notes !== undefined ? notes : undefined,
       },
       include: {
-        member: { select: { id: true, name: true, phone: true, job: true, division: true } }
+        member: { select: { id: true, name: true, phone: true, job: true, division: true, address: true } }
       }
     });
 
@@ -480,8 +501,11 @@ router.post('/:id/pay', authMiddleware, async (req, res) => {
       feeAmount,
       openingBalanceAmount = 0,
       paymentMode = 'Cash in Hand',
+      paymentDate,
       notes = ''
     } = req.body;
+
+    const actualPaymentDate = paymentDate ? new Date(paymentDate) : new Date();
 
     const student = await prisma.madrasaStudent.findUnique({
       where: { id: studentId },
@@ -545,6 +569,7 @@ router.post('/:id/pay', authMiddleware, async (req, res) => {
               openingBalanceAmount: openBalThis,
               totalAmount: totalThis,
               paymentMode,
+              paymentDate: actualPaymentDate,
               receiptNo: sharedReceiptNo,
               notes: notes || '',
             }
@@ -570,7 +595,7 @@ router.post('/:id/pay', authMiddleware, async (req, res) => {
             receiptNo: sharedReceiptNo,
             madrasaPaymentId: batch[0].id,
             studentId: student.id,
-            date: new Date(),
+            date: actualPaymentDate,
           }
         });
 
@@ -620,6 +645,7 @@ router.post('/:id/pay', authMiddleware, async (req, res) => {
           openingBalanceAmount: tOpen,
           totalAmount: tAll,
           paymentMode,
+          paymentDate: actualPaymentDate,
           receiptNo,
           notes: notes || '',
         }
@@ -642,7 +668,7 @@ router.post('/:id/pay', authMiddleware, async (req, res) => {
           receiptNo,
           madrasaPaymentId: p.id,
           studentId: student.id,
-          date: new Date(),
+          date: actualPaymentDate,
         }
       });
 

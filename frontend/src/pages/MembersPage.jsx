@@ -74,6 +74,7 @@ export default function MembersPage() {
     childrenCount: 0,
     familyDetails: '',
     joiningDate: new Date().toISOString().split('T')[0],
+    endDate: '',
     monthlyDonation: 100,
     openingBalance: 0,
     status: 'Active',
@@ -88,6 +89,7 @@ export default function MembersPage() {
   const currentYear = new Date().getFullYear();
   const [selectedPaymentMonths, setSelectedPaymentMonths] = useState([]);
   const [paymentForm, setPaymentForm] = useState({
+    paymentDate: new Date().toISOString().split('T')[0],
     month: currentMonth,
     year: currentYear,
     membershipAmount: 100,
@@ -223,6 +225,7 @@ export default function MembersPage() {
       childrenCount: m.childrenCount !== undefined ? m.childrenCount : 0,
       familyDetails: m.familyDetails || '',
       joiningDate: m.joiningDate ? new Date(m.joiningDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      endDate: m.endDate ? new Date(m.endDate).toISOString().split('T')[0] : '',
       monthlyDonation: m.monthlyDonation || 100,
       openingBalance: m.openingBalance || 0,
       status: m.status || 'Active',
@@ -249,6 +252,7 @@ export default function MembersPage() {
       const isFamily = Boolean(formData.hasFamily);
       const payload = {
         ...formData,
+        endDate: formData.endDate ? formData.endDate : null,
         hasFamily: isFamily,
         adultsCount: isFamily ? (parseInt(formData.adultsCount) || 0) : 0,
         childrenCount: isFamily ? (parseInt(formData.childrenCount) || 0) : 0,
@@ -304,6 +308,7 @@ export default function MembersPage() {
     const initialMembership = initialMonthsCount * (m.monthlyDonation || 100);
 
     setPaymentForm({
+      paymentDate: new Date().toISOString().split('T')[0],
       month: initialDue[0] ? initialDue[0].month : currentMonth,
       year: initialDue[0] ? initialDue[0].year : currentYear,
       membershipAmount: initialMembership,
@@ -750,6 +755,11 @@ export default function MembersPage() {
                       }`}>
                         {m.status}
                       </span>
+                      {m.endDate && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                          Left: {new Date(m.endDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                        </span>
+                      )}
                     </div>
 
                     <div className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-2 mt-1">
@@ -976,6 +986,11 @@ export default function MembersPage() {
                           }`}>
                             {m.status}
                           </span>
+                          {m.endDate && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                              Left: {new Date(m.endDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                            </span>
+                          )}
                         </div>
                         <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-2 mt-1">
                           {m.phone && <span>📞 {m.phone}</span>}
@@ -1320,19 +1335,36 @@ export default function MembersPage() {
                 </span>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Payment Mode
-                </label>
-                <select
-                  value={paymentForm.paymentMode}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, paymentMode: e.target.value })}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                >
-                  {PAYMENT_MODES.map((mode, i) => (
-                    <option key={i} value={mode}>{mode}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Payment Date <span className="text-emerald-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={paymentForm.paymentDate || new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 block">
+                    Change if recording past payment
+                  </span>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Payment Mode
+                  </label>
+                  <select
+                    value={paymentForm.paymentMode}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentMode: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  >
+                    {PAYMENT_MODES.map((mode, i) => (
+                      <option key={i} value={mode}>{mode}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* Remarks / Notes Field */}
@@ -1412,8 +1444,13 @@ export default function MembersPage() {
                     <span>📞 {detailMember.phone || 'No phone recorded'}</span>
                     {detailMember.address && <span>📍 {detailMember.address}</span>}
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-1">
-                    Joined: {new Date(detailMember.joiningDate).toLocaleDateString('en-GB')}
+                  <div className="text-[11px] text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+                    <span>Joined: {new Date(detailMember.joiningDate).toLocaleDateString('en-GB')}</span>
+                    {detailMember.endDate && (
+                      <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                        • Left Mahallu: {new Date(detailMember.endDate).toLocaleDateString('en-GB')}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1824,6 +1861,33 @@ export default function MembersPage() {
                     <option value="Inactive">Inactive</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Leaving / Relocation End Date */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold uppercase text-slate-700 dark:text-slate-300">
+                    Leaving / Relocation Date <span className="text-[10px] font-normal normal-case text-slate-400">(Optional)</span>
+                  </label>
+                  {formData.endDate && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, endDate: '' })}
+                      className="text-[11px] text-rose-500 hover:underline font-medium"
+                    >
+                      Clear Date
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="date"
+                  value={formData.endDate || ''}
+                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  If member stopped or moved to another mahallu, enter their end date. Dues calculation will stop at this month and no further monthly dues will accrue.
+                </p>
               </div>
 
               {/* Monthly Donation */}

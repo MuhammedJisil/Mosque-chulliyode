@@ -73,6 +73,7 @@ export default function MadrasaPage() {
     memberId: '',
     parentName: '',
     parentPhone: '',
+    address: '',
     job: '',
     division: '',
     studentsCount: 1,
@@ -80,6 +81,7 @@ export default function MadrasaPage() {
     monthlyFee: 200,
     openingBalance: 0,
     admissionDate: new Date().toISOString().split('T')[0],
+    endDate: '',
     status: 'Active',
     notes: '',
   };
@@ -92,6 +94,7 @@ export default function MadrasaPage() {
   const currentYear = new Date().getFullYear();
   const [selectedPaymentMonths, setSelectedPaymentMonths] = useState([]);
   const [paymentForm, setPaymentForm] = useState({
+    paymentDate: new Date().toISOString().split('T')[0],
     month: currentMonth,
     year: currentYear,
     feeAmount: 200,
@@ -211,7 +214,7 @@ export default function MadrasaPage() {
     ).slice(0, 20);
   }, [members, memberSearchTerm]);
 
-  // Select a member as parent -> Auto-prefill name, phone, job, division, joining date
+  // Select a member as parent -> Auto-prefill name, phone, address, job, division, joining date
   const handleSelectParentMember = (m) => {
     const count = formData.studentsCount || 1;
     const perStudent = formData.feePerStudent || 200;
@@ -226,6 +229,7 @@ export default function MadrasaPage() {
       memberId: m.id,
       parentName: m.name || '',
       parentPhone: m.phone || '',
+      address: m.address || '',
       job: m.job || '',
       division: m.division || '',
       admissionDate: joiningDateStr,
@@ -271,6 +275,7 @@ export default function MadrasaPage() {
       memberId: s.memberId || '',
       parentName: s.parentName || s.member?.name || '',
       parentPhone: s.parentPhone || s.member?.phone || '',
+      address: s.address || s.member?.address || '',
       job: s.job || s.member?.job || '',
       division: s.division || s.member?.division || '',
       studentsCount: s.studentsCount || 1,
@@ -278,6 +283,7 @@ export default function MadrasaPage() {
       monthlyFee: s.monthlyFee !== undefined ? s.monthlyFee : 200,
       openingBalance: s.openingBalance || 0,
       admissionDate: s.admissionDate ? new Date(s.admissionDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      endDate: s.endDate ? new Date(s.endDate).toISOString().split('T')[0] : '',
       status: s.status || 'Active',
       notes: s.notes || '',
     });
@@ -308,6 +314,8 @@ export default function MadrasaPage() {
       const payload = {
         ...formData,
         memberId: formData.memberId ? parseInt(formData.memberId) : null,
+        address: formData.address || null,
+        endDate: formData.endDate ? formData.endDate : null,
         studentsCount: parseInt(formData.studentsCount) || 1,
         feePerStudent: parseFloat(formData.feePerStudent) || 200,
         monthlyFee: parseFloat(formData.monthlyFee) || 0,
@@ -349,6 +357,7 @@ export default function MadrasaPage() {
     const initialFee = initialMonthsCount * (s.monthlyFee || 200);
 
     setPaymentForm({
+      paymentDate: new Date().toISOString().split('T')[0],
       month: initialDue[0] ? initialDue[0].month : currentMonth,
       year: initialDue[0] ? initialDue[0].year : currentYear,
       feeAmount: initialFee,
@@ -807,6 +816,11 @@ export default function MadrasaPage() {
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
                         {s.studentsCount || 1} Student(s)
                       </span>
+                      {s.endDate && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
+                          Discontinued: {new Date(s.endDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                        </span>
+                      )}
                     </div>
 
                     <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex flex-wrap items-center gap-2">
@@ -992,11 +1006,19 @@ export default function MadrasaPage() {
                           }`}>
                             {s.status}
                           </span>
+                          {s.endDate && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
+                              Discontinued: {new Date(s.endDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                        <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
                           {phone && <span>📞 {phone}</span>}
                           {s.admissionDate && (
                             <span>• Joined: {new Date(s.admissionDate).toLocaleDateString('en-GB')}</span>
+                          )}
+                          {s.endDate && (
+                            <span className="text-amber-600 dark:text-amber-400 font-semibold">• Left: {new Date(s.endDate).toLocaleDateString('en-GB')}</span>
                           )}
                         </div>
                       </td>
@@ -1279,6 +1301,20 @@ export default function MadrasaPage() {
                   </div>
                 </div>
 
+                {/* Residential Address (Auto-prefilled from member) */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Residential Address <span className="text-[10px] text-slate-400 font-normal">(Auto-prefilled from Member)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. House #42, Main Road, Near Market"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
                 {/* Prefilled: Area / Division & Admission Date */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -1396,6 +1432,33 @@ export default function MadrasaPage() {
                       <option value="Inactive">Inactive</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Discontinuation / End Date */}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold uppercase text-slate-700 dark:text-slate-300">
+                      Discontinuation / End Date <span className="text-[10px] font-normal normal-case text-slate-400">(Optional)</span>
+                    </label>
+                    {formData.endDate && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, endDate: '' })}
+                        className="text-[11px] text-rose-500 hover:underline font-medium"
+                      >
+                        Clear Date
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="date"
+                    value={formData.endDate || ''}
+                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    If student left or stopped attending madrasa, set their end date. Fee calculation will stop at this month and no further monthly dues will accrue.
+                  </p>
                 </div>
 
                 {/* Notes */}
@@ -1578,19 +1641,36 @@ export default function MadrasaPage() {
                   </span>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Payment Mode
-                  </label>
-                  <select
-                    value={paymentForm.paymentMode}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentMode: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    {PAYMENT_MODES.map((mode, i) => (
-                      <option key={i} value={mode}>{mode}</option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Payment Date <span className="text-emerald-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={paymentForm.paymentDate || new Date().toISOString().split('T')[0]}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 block">
+                      Change if recording past payment
+                    </span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Payment Mode
+                    </label>
+                    <select
+                      value={paymentForm.paymentMode}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, paymentMode: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      {PAYMENT_MODES.map((mode, i) => (
+                        <option key={i} value={mode}>{mode}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 {/* Remarks */}
@@ -1744,9 +1824,12 @@ export default function MadrasaPage() {
                   <GraduationCap className="w-5 h-5 text-emerald-600" />
                   {detailStudent.parentName || detailStudent.member?.name}
                 </h3>
-                <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
+                <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-emerald-600">{detailStudent.studentsCount || 1} Student(s)</span>
                   <span>• Admitted / Joined: {new Date(detailStudent.admissionDate).toLocaleDateString('en-GB')}</span>
+                  {detailStudent.endDate && (
+                    <span className="text-amber-600 dark:text-amber-400 font-semibold">• Discontinued / Left: {new Date(detailStudent.endDate).toLocaleDateString('en-GB')}</span>
+                  )}
                 </div>
               </div>
               <button
@@ -1784,6 +1867,9 @@ export default function MadrasaPage() {
                   )}
                 </div>
                 <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-3">
+                  {(detailStudent.address || detailStudent.member?.address) && (
+                    <span>📍 Address: {detailStudent.address || detailStudent.member?.address}</span>
+                  )}
                   {(detailStudent.division || detailStudent.member?.division) && (
                     <span>📍 Area: {detailStudent.division || detailStudent.member?.division}</span>
                   )}

@@ -20,6 +20,17 @@ function calculateMemberDue(member, payments) {
     startMonth = 1;
   }
 
+  // Determine end month/year: If member stopped / moved (endDate), dues stop at that month
+  let endYear = currentYear;
+  let endMonth = currentMonth;
+  if (member.endDate) {
+    const eDate = new Date(member.endDate);
+    if (!isNaN(eDate.getFullYear())) {
+      endYear = eDate.getFullYear();
+      endMonth = eDate.getMonth() + 1;
+    }
+  }
+
   // Create set of paid (year-month) keys
   const paidSet = new Set(payments.map(p => `${p.year}-${p.month}`));
 
@@ -27,7 +38,7 @@ function calculateMemberDue(member, payments) {
   let y = startYear;
   let m = startMonth;
 
-  while (y < currentYear || (y === currentYear && m <= currentMonth)) {
+  while (y < endYear || (y === endYear && m <= endMonth)) {
     const key = `${y}-${m}`;
     if (!paidSet.has(key)) {
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -216,6 +227,7 @@ router.post('/', authMiddleware, async (req, res) => {
       childrenCount = 0,
       familyDetails,
       joiningDate,
+      endDate,
       monthlyDonation = 100,
       openingBalance = 0,
       status = 'Active',
@@ -243,6 +255,7 @@ router.post('/', authMiddleware, async (req, res) => {
         childrenCount: isFamilyChecked ? (parseInt(childrenCount) || 0) : 0,
         familyDetails: isFamilyChecked ? (familyDetails || '') : '',
         joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
+        endDate: endDate ? new Date(endDate) : null,
         monthlyDonation: parseFloat(monthlyDonation) || 100,
         openingBalance: parseFloat(openingBalance) || 0,
         status: status || 'Active',
@@ -279,6 +292,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       childrenCount,
       familyDetails,
       joiningDate,
+      endDate,
       monthlyDonation,
       openingBalance,
       status,
@@ -296,6 +310,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
       division: division !== undefined ? division : undefined,
       idNumber: idNumber !== undefined ? idNumber : undefined,
       ...(joiningDate ? { joiningDate: new Date(joiningDate) } : {}),
+      ...(endDate !== undefined ? { endDate: endDate ? new Date(endDate) : null } : {}),
       ...(monthlyDonation !== undefined ? { monthlyDonation: parseFloat(monthlyDonation) } : {}),
       ...(openingBalance !== undefined ? { openingBalance: parseFloat(openingBalance) } : {}),
       ...(status !== undefined ? { status } : {}),
@@ -383,9 +398,12 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
       madrasaAmount = 0,
       openingBalanceAmount = 0,
       paymentMode = 'Cash in Hand',
+      paymentDate,
       notes,
       months = [] // Array of { month, year } for multi-month payment
     } = req.body;
+
+    const actualPaymentDate = paymentDate ? new Date(paymentDate) : new Date();
 
     const member = await prisma.member.findUnique({ where: { id: memberId } });
     if (!member) {
@@ -447,6 +465,7 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
               openingBalanceAmount: openBalThis,
               totalAmount: totalThis,
               paymentMode,
+              paymentDate: actualPaymentDate,
               receiptNo: sharedReceiptNo,
               notes: notes || '',
             }
@@ -473,7 +492,7 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
             receiptNo: sharedReceiptNo,
             memberPaymentId: batch[0].id,
             memberId: member.id,
-            date: new Date(),
+            date: actualPaymentDate,
           }
         });
 
@@ -531,6 +550,7 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
           openingBalanceAmount: parsedOpeningBal,
           totalAmount,
           paymentMode,
+          paymentDate: actualPaymentDate,
           receiptNo,
           notes: notes || '',
         }
@@ -564,7 +584,7 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
           receiptNo,
           memberPaymentId: p.id,
           memberId: member.id,
-          date: new Date(),
+          date: actualPaymentDate,
         }
       });
 

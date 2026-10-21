@@ -71,6 +71,7 @@ model Member {
   monthlyDonation      Float           @default(100.0)
   openingBalance       Float           @default(0.0) // Initial past due balance / arrears when registering member
   status               String          @default("Active") // Active or Inactive
+  endDate              DateTime?       // Membership end date / Relocated date (dues stop here)
   hasMadrasa           Boolean         @default(false)
   madrasaChildrenCount Int             @default(0)
   madrasaMonthlyFee    Float           @default(0.0)
@@ -164,6 +165,7 @@ model MadrasaStudent {
   member         Member?          @relation(fields: [memberId], references: [id], onDelete: SetNull)
   parentName     String?          // Parent or Member Name
   parentPhone    String?          @default("")
+  address        String?          // Parent / Student Address
   job            String?          // Parent / Member Job
   division       String?          // Ward / Division / Area
   studentsCount  Int              @default(1) // Number of children in madrasa
@@ -174,6 +176,7 @@ model MadrasaStudent {
   feePerStudent  Float?           @default(200.0) // Rate per student
   openingBalance Float            @default(0.0) // Past fee arrears
   admissionDate  DateTime         @default(now()) // Joining / Admission date
+  endDate        DateTime?        // Leaving / Discontinued date (dues stop here)
   status         String           @default("Active") // Active or Inactive
   notes          String?
   createdAt      DateTime         @default(now())

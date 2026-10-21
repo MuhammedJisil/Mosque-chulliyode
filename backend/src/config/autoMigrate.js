@@ -78,10 +78,13 @@ async function autoMigrate() {
       // 4. Ensure all newly added columns exist in existing PostgreSQL tables
       const alterStatements = [
         `ALTER TABLE "Member" ADD COLUMN IF NOT EXISTS "job" TEXT;`,
+        `ALTER TABLE "Member" ADD COLUMN IF NOT EXISTS "endDate" TIMESTAMP(3);`,
         `ALTER TABLE "Member" ADD COLUMN IF NOT EXISTS "hasMadrasa" BOOLEAN DEFAULT false;`,
         `ALTER TABLE "Member" ADD COLUMN IF NOT EXISTS "madrasaChildrenCount" INTEGER DEFAULT 0;`,
         `ALTER TABLE "Member" ADD COLUMN IF NOT EXISTS "madrasaMonthlyFee" DOUBLE PRECISION DEFAULT 0.0;`,
         `ALTER TABLE "MadrasaStudent" ADD COLUMN IF NOT EXISTS "job" TEXT;`,
+        `ALTER TABLE "MadrasaStudent" ADD COLUMN IF NOT EXISTS "address" TEXT;`,
+        `ALTER TABLE "MadrasaStudent" ADD COLUMN IF NOT EXISTS "endDate" TIMESTAMP(3);`,
         `ALTER TABLE "MadrasaStudent" ADD COLUMN IF NOT EXISTS "studentsCount" INTEGER DEFAULT 1;`,
         `ALTER TABLE "MadrasaStudent" ADD COLUMN IF NOT EXISTS "feePerStudent" DOUBLE PRECISION DEFAULT 200.0;`,
         `ALTER TABLE "MadrasaStudent" ADD COLUMN IF NOT EXISTS "parentPhone" TEXT DEFAULT '';`,
@@ -116,6 +119,7 @@ async function autoMigrate() {
           "memberId" INTEGER,
           "parentName" TEXT,
           "parentPhone" TEXT DEFAULT '',
+          "address" TEXT,
           "job" TEXT,
           "division" TEXT,
           "studentsCount" INTEGER DEFAULT 1,
@@ -126,6 +130,7 @@ async function autoMigrate() {
           "feePerStudent" REAL DEFAULT 200.0,
           "openingBalance" REAL DEFAULT 0.0,
           "admissionDate" DATETIME DEFAULT CURRENT_TIMESTAMP,
+          "endDate" DATETIME,
           "status" TEXT DEFAULT 'Active',
           "notes" TEXT,
           "createdAt" DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -153,9 +158,12 @@ async function autoMigrate() {
       // Add missing columns to SQLite if needed
       const sqliteAddCols = [
         `ALTER TABLE "Member" ADD COLUMN "job" TEXT;`,
+        `ALTER TABLE "Member" ADD COLUMN "endDate" DATETIME;`,
         `ALTER TABLE "Member" ADD COLUMN "hasMadrasa" BOOLEAN DEFAULT 0;`,
         `ALTER TABLE "Member" ADD COLUMN "madrasaChildrenCount" INTEGER DEFAULT 0;`,
         `ALTER TABLE "Member" ADD COLUMN "madrasaMonthlyFee" REAL DEFAULT 0.0;`,
+        `ALTER TABLE "MadrasaStudent" ADD COLUMN "address" TEXT;`,
+        `ALTER TABLE "MadrasaStudent" ADD COLUMN "endDate" DATETIME;`,
         `ALTER TABLE "MadrasaStudent" ADD COLUMN "job" TEXT;`,
         `ALTER TABLE "MadrasaStudent" ADD COLUMN "studentsCount" INTEGER DEFAULT 1;`,
         `ALTER TABLE "MadrasaStudent" ADD COLUMN "feePerStudent" REAL DEFAULT 200.0;`,

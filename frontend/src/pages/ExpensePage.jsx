@@ -173,14 +173,14 @@ export default function ExpensePage() {
       return (d.getMonth() + 1 === month) && (d.getFullYear() === year);
     });
 
-    const columns = ['Date', 'Purpose', 'Paid To', 'Category', 'Payment Mode', 'Amount (₹)'];
+    const columns = ['Date', 'Purpose / Item', 'Paid To / Vendor', 'Category', 'Payment Mode', 'Amount (Rs.)'];
     const rows = dataToExport.map(item => [
       new Date(item.date).toLocaleDateString('en-GB'),
-      item.purpose,
-      item.paidTo,
-      item.category,
-      item.paymentMode,
-      '₹' + Number(item.amount).toLocaleString('en-IN')
+      item.purpose || '-',
+      item.paidTo || '-',
+      item.category || '-',
+      item.paymentMode || 'Cash',
+      'Rs. ' + Number(item.amount).toLocaleString('en-IN')
     ]);
 
     const total = dataToExport.reduce((acc, c) => acc + c.amount, 0);
@@ -192,7 +192,7 @@ export default function ExpensePage() {
       columns,
       rows,
       summaryRows: [
-        { label: 'Total Expenditures:', value: '₹' + Number(total).toLocaleString('en-IN'), bold: true, highlight: true }
+        { label: 'Total Expenditures:', value: 'Rs. ' + Number(total).toLocaleString('en-IN'), bold: true, highlight: true }
       ],
       fileName: `Masjid_Al_Noor_Expense_${periodLabel.replace(/\s+/g, '_')}.pdf`
     });
@@ -697,13 +697,14 @@ export default function ExpensePage() {
 
       {/* Add / Edit Expense Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:p-4 md:p-6 flex items-center justify-center animate-fade-in">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-xl w-full my-2 sm:my-auto border border-slate-200 dark:border-slate-800 flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
                 {editingItem ? 'Edit Expense Record' : 'Record New Expense'}
               </h3>
               <button
+                type="button"
                 onClick={() => setShowAddModal(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
@@ -711,53 +712,60 @@ export default function ExpensePage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="py-4 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Expense Purpose */}
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Expense Purpose / Title <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 overscroll-contain">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Category Dropdown (options from Image 3) */}
+                  <CategoryDropdown
+                    label="Category"
+                    value={formData.category}
+                    onChange={(cat) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        category: cat,
+                        purpose: (!prev.purpose || prev.purpose.trim() === '') ? cat : prev.purpose
+                      }));
+                    }}
+                    defaultCategories={DEFAULT_EXPENSE_CATEGORIES}
+                    customCategories={customCategories}
+                    onCategoryAdded={fetchCustomCategories}
+                    onCategoryUpdated={fetchCustomCategories}
+                    onCategoryDeleted={fetchCustomCategories}
+                    type="EXPENSE"
                     required
-                    placeholder="e.g. Electricity Bill, Maintenance"
-                    value={formData.purpose}
-                    onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-rose-500 focus:outline-none"
                   />
+
+                  {/* Expense Purpose */}
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Expense Purpose / Title <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Electricity Bill, Maintenance"
+                      value={formData.purpose}
+                      onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                    />
+                  </div>
                 </div>
 
-                {/* Paid To */}
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Paid To (Vendor / Person) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Electric Board or Hardware Store"
-                    value={formData.paidTo}
-                    onChange={(e) => setFormData({ ...formData, paidTo: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-rose-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Category Dropdown (options from Image 3) */}
-                <CategoryDropdown
-                  label="Category"
-                  value={formData.category}
-                  onChange={(cat) => setFormData({ ...formData, category: cat })}
-                  defaultCategories={DEFAULT_EXPENSE_CATEGORIES}
-                  customCategories={customCategories}
-                  onCategoryAdded={fetchCustomCategories}
-                  onCategoryUpdated={fetchCustomCategories}
-                  onCategoryDeleted={fetchCustomCategories}
-                  type="EXPENSE"
-                  required
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Paid To */}
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Paid To (Vendor / Person) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Electric Board or Hardware Store"
+                      value={formData.paidTo}
+                      onChange={(e) => setFormData({ ...formData, paidTo: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                    />
+                  </div>
 
                 {/* Amount */}
                 <div>
@@ -875,9 +883,10 @@ export default function ExpensePage() {
                   </div>
                 )}
               </div>
+            </div>
 
               {/* Actions */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}

@@ -195,28 +195,56 @@ router.get('/statement', authMiddleware, async (req, res) => {
 
     // 3. Merge, tag, and sort chronologically
     const combined = [
-      ...incomes.map(inc => ({
-        id: `inc-${inc.id}`,
-        date: inc.date,
-        title: inc.title,
-        category: inc.category,
-        paymentMode: inc.paymentMode,
-        receiptNo: inc.receiptNo,
-        type: 'INCOME',
-        incomeAmount: Number(inc.amount || 0),
-        expenseAmount: 0
-      })),
-      ...expenses.map(exp => ({
-        id: `exp-${exp.id}`,
-        date: exp.date,
-        title: exp.title,
-        category: exp.category,
-        paymentMode: exp.paymentMode,
-        receiptNo: exp.invoiceNo,
-        type: 'EXPENSE',
-        incomeAmount: 0,
-        expenseAmount: Number(exp.amount || 0)
-      }))
+      ...incomes.map(inc => {
+        const donor = inc.donorName ? inc.donorName.trim() : '';
+        const desc = inc.description ? inc.description.trim() : '';
+        let title = '';
+        if (donor && desc) {
+          title = `${donor} - ${desc}`;
+        } else {
+          title = donor || desc || inc.category || 'Income';
+        }
+
+        return {
+          id: `inc-${inc.id}`,
+          date: inc.date,
+          title,
+          donorName: inc.donorName,
+          description: inc.description,
+          category: inc.category,
+          paymentMode: inc.paymentMode,
+          receiptNo: inc.receiptNo,
+          type: 'INCOME',
+          incomeAmount: Number(inc.amount || 0),
+          expenseAmount: 0
+        };
+      }),
+      ...expenses.map(exp => {
+        const purp = exp.purpose ? exp.purpose.trim() : '';
+        const paid = exp.paidTo ? exp.paidTo.trim() : '';
+        const desc = exp.description ? exp.description.trim() : '';
+        let title = '';
+        if (purp && paid) {
+          title = `${purp} (${paid})`;
+        } else {
+          title = purp || paid || desc || exp.category || 'Expense';
+        }
+
+        return {
+          id: `exp-${exp.id}`,
+          date: exp.date,
+          title,
+          purpose: exp.purpose,
+          paidTo: exp.paidTo,
+          description: exp.description,
+          category: exp.category,
+          paymentMode: exp.paymentMode,
+          receiptNo: exp.receiptNo,
+          type: 'EXPENSE',
+          incomeAmount: 0,
+          expenseAmount: Number(exp.amount || 0)
+        };
+      })
     ];
 
     combined.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
