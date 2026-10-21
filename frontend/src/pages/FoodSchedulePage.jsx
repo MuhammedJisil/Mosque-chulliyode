@@ -72,16 +72,12 @@ export default function FoodSchedulePage() {
   const [formData, setFormData] = useState(initialForm);
   const [submitting, setSubmitting] = useState(false);
 
-  // Auto-generate Rotation Form
-  const [generateMode, setGenerateMode] = useState('area'); // 'area' or 'individual'
-  const [orderedAreas, setOrderedAreas] = useState([]);
-  const [selectedAreaNames, setSelectedAreaNames] = useState([]);
-  const [expandedAreas, setExpandedAreas] = useState({});
-  const [generateForm, setGenerateForm] = useState({
-    startDate: new Date().toISOString().split('T')[0],
-    mealType: 'All Day',
-    selectedMemberIds: [],
-  });
+  // Auto-generate Rotation by Area & Member Sequence
+  const [rosterMembers, setRosterMembers] = useState([]); // Array of member objects in exact schedule order
+  const [rosterAreaTab, setRosterAreaTab] = useState('All');
+  const [rosterSearch, setRosterSearch] = useState('');
+  const [generateStartDate, setGenerateStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [generateMealType, setGenerateMealType] = useState('All Day');
 
   // Fetch duties and members
   const fetchDuties = async () => {
@@ -298,114 +294,116 @@ export default function FoodSchedulePage() {
     return map;
   }, [members]);
 
-  // Auto-Generate Roster Handlers
+  // Auto-Generate Roster Handlers (Member Selection by Area + Cross-Area Swap Sequence)
   const handleOpenGenerate = () => {
-    const activeMembers = members.filter(m => m.status === 'Active');
-    const areaList = Object.keys(memberAreas).map(areaName => ({
-      name: areaName,
-      members: memberAreas[areaName] || []
-    }));
-    setOrderedAreas(areaList);
-    setSelectedAreaNames(areaList.map(a => a.name));
-    setGenerateMode('area');
-    setExpandedAreas({});
-    setGenerateForm({
-      startDate: new Date().toISOString().split('T')[0],
-      mealType: 'All Day',
-      selectedMemberIds: activeMembers.map(m => m.id),
-    });
+    setGenerateStartDate(new Date().toISOString().split('T')[0]);
+    setGenerateMealType('All Day');
+    setRosterMembers([]);
+    setRosterAreaTab('All');
+    setRosterSearch('');
     setShowGenerateModal(true);
   };
 
-  const moveAreaUp = (index) => {
-    if (index <= 0) return;
-    const next = [...orderedAreas];
-    const temp = next[index - 1];
-    next[index - 1] = next[index];
-    next[index] = temp;
-    setOrderedAreas(next);
-  };
+  const areaList = useMemo(() => {
+    return Object.keys(memberAreas).sort((a, b) => a.localeCompare(b));
+  }, [memberAreas]);
 
-  const moveAreaDown = (index) => {
-    if (index >= orderedAreas.length - 1) return;
-    const next = [...orderedAreas];
-    const temp = next[index + 1];
-    next[index + 1] = next[index];
-    next[index] = temp;
-    setOrderedAreas(next);
-  };
-
-  const swapTwoAreas = (area1Name, area2Name) => {
-    const idx1 = orderedAreas.findIndex(a => a.name === area1Name);
-    const idx2 = orderedAreas.findIndex(a => a.name === area2Name);
-    if (idx1 === -1 || idx2 === -1) return;
-    const next = [...orderedAreas];
-    const temp = next[idx1];
-    next[idx1] = next[idx2];
-    next[idx2] = temp;
-    setOrderedAreas(next);
-  };
-
-  const toggleAreaSelection = (areaName) => {
-    const isSelected = selectedAreaNames.includes(areaName);
-    const nextSelected = isSelected
-      ? selectedAreaNames.filter(a => a !== areaName)
-      : [...selectedAreaNames, areaName];
-    setSelectedAreaNames(nextSelected);
-
-    const areaHouses = memberAreas[areaName] || [];
-    const houseIds = areaHouses.map(h => h.id);
-    if (isSelected) {
-      setGenerateForm(prev => ({
-        ...prev,
-        selectedMemberIds: prev.selectedMemberIds.filter(id => !houseIds.includes(id))
-      }));
-    } else {
-      setGenerateForm(prev => ({
-        ...prev,
-        selectedMemberIds: Array.from(new Set([...prev.selectedMemberIds, ...houseIds]))
-      }));
+  // Filter members displayed in the left picker panel
+  const availableMembersForArea = useMemo(() => {
+    let list = members.filter(m => m.status === 'Active');
+    if (rosterAreaTab !== 'All') {
+      list = list.filter(m => {
+        const area = (m.division && m.division.trim()) || 'General / Area';
+        return area === rosterAreaTab;
+      });
     }
+    if (rosterSearch.trim()) {
+      const q = rosterSearch.toLowerCase();
+      list = list.filter(m =>
+        (m.name && m.name.toLowerCase().includes(q)) ||
+        (m.phone && m.phone.includes(q)) ||
+        (m.idNumber && m.idNumber.toLowerCase().includes(q)) ||
+        (m.division && m.division.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [members, rosterAreaTab, rosterSearch]);
+
+  const addMemberToRoster = (member) => {
+    setRosterMembers(prev => [...prev, member]);
+  };
+
+  const removeMemberFromRoster = (index) => {
+    setRosterMembers(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const addAllFromCurrentArea = () => {
+    const currentRosterIds = new Set(rosterMembers.map(m => m.id));
+    const toAdd = availableMembersForArea.filter(m => !currentRosterIds.has(m.id));
+    if (toAdd.length === 0) {
+      if (availableMembersForArea.length > 0) {
+        toast.info('All houses currently shown are already in the roster.');
+      } else {
+        toast.info('No houses found in this area.');
+      }
+      return;
+    }
+    setRosterMembers(prev => [...prev, ...toAdd]);
+    toast.success(`Added ${toAdd.length} houses to rotation roster`);
+  };
+
+  const moveRosterMember = (index, direction) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= rosterMembers.length) return;
+    setRosterMembers(prev => {
+      const next = [...prev];
+      const temp = next[index];
+      next[index] = next[targetIndex];
+      next[targetIndex] = temp;
+      return next;
+    });
+  };
+
+  const swapRosterMembers = (index1, index2) => {
+    if (
+      index1 < 0 ||
+      index1 >= rosterMembers.length ||
+      index2 < 0 ||
+      index2 >= rosterMembers.length ||
+      index1 === index2
+    ) {
+      return;
+    }
+    setRosterMembers(prev => {
+      const next = [...prev];
+      const temp = next[index1];
+      next[index1] = next[index2];
+      next[index2] = temp;
+      return next;
+    });
   };
 
   const handleGenerateRoster = async (e) => {
     e.preventDefault();
-    const { startDate, mealType, selectedMemberIds } = generateForm;
 
-    let finalOrderedMemberIds = [];
-
-    if (generateMode === 'area') {
-      // Rotate consecutively area by area according to orderedAreas
-      for (const area of orderedAreas) {
-        if (!selectedAreaNames.includes(area.name)) continue;
-        const areaHouses = (area.members || []).filter(m => selectedMemberIds.includes(m.id));
-        finalOrderedMemberIds.push(...areaHouses.map(m => m.id));
-      }
-    } else {
-      finalOrderedMemberIds = members
-        .filter(m => m.status === 'Active' && selectedMemberIds.includes(m.id))
-        .map(m => m.id);
-    }
-
-    if (finalOrderedMemberIds.length === 0) {
-      toast.error('Please select at least one house/member for the rotation roster');
+    if (rosterMembers.length === 0) {
+      toast.error('Please add at least one house/member for the rotation roster');
       return;
     }
 
     setSubmitting(true);
     try {
-      const start = new Date(startDate);
-      const bulkAssignments = finalOrderedMemberIds.map((mId, index) => {
+      const start = new Date(generateStartDate);
+      const bulkAssignments = rosterMembers.map((m, index) => {
         const d = new Date(start);
         d.setDate(d.getDate() + index);
-        const m = members.find(x => x.id === mId);
         return {
-          memberId: mId,
-          customName: m ? m.name : null,
-          phone: m ? m.phone : null,
-          division: m ? m.division : null,
+          memberId: m.id,
+          customName: m.name,
+          phone: m.phone || null,
+          division: m.division || null,
           date: d.toISOString().split('T')[0],
-          mealType: mealType || 'All Day',
+          mealType: generateMealType || 'All Day',
           status: 'Pending',
         };
       });
@@ -1395,79 +1393,53 @@ export default function FoodSchedulePage() {
       {/* Auto-Generate Rotation Modal */}
       {showGenerateModal && createPortal(
         <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:p-4 md:p-6 flex items-center justify-center animate-fade-in">
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-xl w-full my-2 sm:my-auto border border-slate-200 dark:border-slate-800 flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] overflow-hidden">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl max-w-5xl w-full my-2 sm:my-auto border border-slate-200 dark:border-slate-800 flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[92vh] overflow-hidden">
+            {/* Header */}
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-blue-600" />
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Auto-Generate Daily Food Rotation
-                </h3>
+                <Sparkles className="w-5 h-5 text-blue-600 shrink-0" />
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Generate Food Rotation Roster (ഭക്ഷണ ഡ്യൂട്ടി ക്രമം)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Select houses area-by-area, queue rotation order, and swap members across different areas.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowGenerateModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleGenerateRoster} className="flex flex-col flex-1 overflow-hidden">
-              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 overscroll-contain">
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Automatically create consecutive daily food duties for mosque staff. Choose whether to generate sequentially area-by-area or by custom individual houses.
-                </p>
-
-                {/* Mode Selector */}
-                <div className="grid grid-cols-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setGenerateMode('area')}
-                    className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                      generateMode === 'area'
-                        ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                    }`}
-                  >
-                    <Layers className="w-4 h-4" />
-                    By Area / Division (ഏരിയ ക്രമം)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGenerateMode('individual')}
-                    className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                      generateMode === 'individual'
-                        ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                    }`}
-                  >
-                    <Users className="w-4 h-4" />
-                    Individual Selection
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Settings Bar */}
+              <div className="p-3 sm:px-5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 shrink-0 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                      Rotation Starting Date <span className="text-rose-500">*</span>
+                    <label className="block text-[10px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-0.5">
+                      Starting Date <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="date"
                       required
-                      value={generateForm.startDate}
-                      onChange={(e) => setGenerateForm({ ...generateForm, startDate: e.target.value })}
-                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      value={generateStartDate}
+                      onChange={(e) => setGenerateStartDate(e.target.value)}
+                      className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     />
                   </div>
-
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-[10px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-0.5">
                       Meal Type
                     </label>
                     <select
-                      value={generateForm.mealType}
-                      onChange={(e) => setGenerateForm({ ...generateForm, mealType: e.target.value })}
-                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      value={generateMealType}
+                      onChange={(e) => setGenerateMealType(e.target.value)}
+                      className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     >
                       <option value="All Day">All Day (മുഴുവൻ ഭക്ഷണം)</option>
                       <option value="Breakfast">Breakfast</option>
@@ -1477,226 +1449,317 @@ export default function FoodSchedulePage() {
                   </div>
                 </div>
 
-                {generateMode === 'area' ? (
-                  /* ================= Area by Area Mode ================= */
-                  <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase block">
-                          Area Rotation Order ({orderedAreas.filter(a => selectedAreaNames.includes(a.name)).length} areas selected)
-                        </span>
-                        <p className="text-[11px] text-slate-500">
-                          Roster starts from Area #1, finishes all its houses, then moves to Area #2, etc. Use ↑ / ↓ or Swap to change sequence.
-                        </p>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
+                    {rosterMembers.length} {rosterMembers.length === 1 ? 'Day' : 'Days'} Queued
+                  </span>
+                  {rosterMembers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setRosterMembers([])}
+                      className="text-xs text-rose-500 hover:text-rose-700 font-semibold px-2 py-1 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Main Two-Column Layout */}
+              <div className="flex-1 overflow-y-auto p-3 sm:p-5">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-full">
+                  {/* Left Column: Area Houses Picker */}
+                  <div className="lg:col-span-6 flex flex-col border border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/70 dark:bg-slate-900/40 p-3 sm:p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <Building className="w-4 h-4 text-blue-600" />
+                        <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                          1. Select Houses by Area
+                        </h4>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedAreaNames(orderedAreas.map(a => a.name))}
-                          className="text-[11px] text-blue-600 font-semibold hover:underline"
-                        >
-                          Select All
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedAreaNames([])}
-                          className="text-[11px] text-slate-400 hover:underline"
-                        >
-                          Clear
-                        </button>
+                      <button
+                        type="button"
+                        onClick={addAllFromCurrentArea}
+                        className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800 transition-all"
+                      >
+                        + Add All from Area
+                      </button>
+                    </div>
+
+                    {/* Area Navigation Pills */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-thin">
+                      <button
+                        type="button"
+                        onClick={() => setRosterAreaTab('All')}
+                        className={`text-xs px-2.5 py-1 rounded-lg font-medium whitespace-nowrap transition-all ${
+                          rosterAreaTab === 'All'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        All Areas ({members.filter(m => m.status === 'Active').length})
+                      </button>
+                      {areaList.map(areaName => {
+                        const count = (memberAreas[areaName] || []).length;
+                        const isCurrent = rosterAreaTab === areaName;
+                        return (
+                          <button
+                            key={areaName}
+                            type="button"
+                            onClick={() => setRosterAreaTab(areaName)}
+                            className={`text-xs px-2.5 py-1 rounded-lg font-medium whitespace-nowrap transition-all ${
+                              isCurrent
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            {areaName} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Search in Current Area */}
+                    <div className="relative my-2">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search member, phone or ID..."
+                        value={rosterSearch}
+                        onChange={(e) => setRosterSearch(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {/* Houses List */}
+                    <div className="overflow-y-auto max-h-72 sm:max-h-80 space-y-1.5 pr-1">
+                      {availableMembersForArea.length === 0 ? (
+                        <div className="text-center py-8 text-xs text-slate-400">
+                          No active houses found in this area.
+                        </div>
+                      ) : (
+                        availableMembersForArea.map(m => {
+                          const queuedIndices = rosterMembers
+                            .map((rm, idx) => (rm.id === m.id ? idx + 1 : null))
+                            .filter(Boolean);
+                          const isQueued = queuedIndices.length > 0;
+
+                          return (
+                            <div
+                              key={m.id}
+                              className={`p-2 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                                isQueued
+                                  ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900/60'
+                                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-300'
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">
+                                    {m.name}
+                                  </span>
+                                  {m.idNumber && (
+                                    <span className="text-[10px] font-mono text-slate-400">
+                                      #{m.idNumber}
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                                    📍 {m.division || 'General'}
+                                  </span>
+                                </div>
+                                {m.phone && (
+                                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                                    📞 {m.phone}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isQueued && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">
+                                    Day {queuedIndices.join(', ')}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => addMemberToRoster(m)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-xs"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  Add
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Rotation Sequence & Member Swapping */}
+                  <div className="lg:col-span-6 flex flex-col border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-800/80 p-3 sm:p-4 shadow-xs">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <Utensils className="w-4 h-4 text-emerald-600" />
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                            2. Duty Sequence & Cross-Area Swapping
+                          </h4>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                            Consecutive daily order. Swap any member with another from any area.
+                          </p>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="space-y-2 max-h-64 overflow-y-auto p-1">
-                      {orderedAreas.map((area, idx) => {
-                        const isSelected = selectedAreaNames.includes(area.name);
-                        const isExpanded = !!expandedAreas[area.name];
-                        return (
-                          <div
-                            key={area.name}
-                            className={`rounded-xl border transition-all ${
-                              isSelected
-                                ? 'bg-white dark:bg-slate-800 border-blue-200 dark:border-blue-800 shadow-xs'
-                                : 'bg-slate-100/70 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 opacity-60'
-                            }`}
-                          >
-                            <div className="p-2.5 flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => toggleAreaSelection(area.name)}
-                                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 shrink-0"
-                                />
-                                <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-[10px] font-bold flex items-center justify-center shrink-0">
-                                  {idx + 1}
-                                </span>
+                    {/* Sequence List */}
+                    <div className="overflow-y-auto max-h-80 sm:max-h-96 space-y-1.5 pr-1 flex-1">
+                      {rosterMembers.length === 0 ? (
+                        <div className="text-center py-16 px-4 text-slate-400 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700/80 rounded-xl">
+                          <Users className="w-8 h-8 text-slate-300 dark:text-slate-600 mb-2" />
+                          <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                            No Houses Added Yet
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
+                            Select an area on the left and click <b>+ Add</b> on members or <b>+ Add All from Area</b> to build your sequence.
+                          </p>
+                        </div>
+                      ) : (
+                        rosterMembers.map((m, idx) => {
+                          const d = new Date(generateStartDate);
+                          d.setDate(d.getDate() + idx);
+                          const dayString = d.toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric'
+                          });
+
+                          return (
+                            <div
+                              key={`${m.id}-${idx}`}
+                              className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/50 hover:bg-white dark:hover:bg-slate-800 transition-all flex items-center justify-between gap-2"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="text-center shrink-0 w-12 py-1 px-1 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200">
+                                  <div className="text-[10px] font-bold uppercase leading-none">
+                                    Day {idx + 1}
+                                  </div>
+                                </div>
                                 <div className="min-w-0">
-                                  <span className="font-bold text-xs text-slate-800 dark:text-slate-100 block truncate">
-                                    {area.name}
-                                  </span>
-                                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                                    {area.members.length} {area.members.length === 1 ? 'house' : 'houses'}
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">
+                                      {m.name}
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-medium">
+                                      📍 {m.division || 'General'}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block">
+                                    🗓 {dayString} {m.phone && `• 📞 ${m.phone}`}
                                   </span>
                                 </div>
                               </div>
 
+                              {/* Controls: Up, Down, Cross-Area Swap Dropdown, Remove */}
                               <div className="flex items-center gap-1 shrink-0">
-                                {/* Up / Down Order Buttons */}
                                 <button
                                   type="button"
-                                  onClick={() => moveAreaUp(idx)}
+                                  onClick={() => moveRosterMember(idx, -1)}
                                   disabled={idx === 0}
-                                  title="Move Earlier in Roster"
-                                  className="p-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-25"
+                                  title="Move Earlier in Rotation"
+                                  className="p-1 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-20 transition-colors"
                                 >
                                   <ArrowUp className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => moveAreaDown(idx)}
-                                  disabled={idx === orderedAreas.length - 1}
-                                  title="Move Later in Roster"
-                                  className="p-1 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-25"
+                                  onClick={() => moveRosterMember(idx, 1)}
+                                  disabled={idx === rosterMembers.length - 1}
+                                  title="Move Later in Rotation"
+                                  className="p-1 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-20 transition-colors"
                                 >
                                   <ArrowDown className="w-3.5 h-3.5" />
                                 </button>
 
-                                {/* Swap with dropdown */}
+                                {/* Cross-Area Member Swap Selector */}
                                 <select
-                                  aria-label="Swap with another area"
+                                  aria-label="Swap with another member"
+                                  value=""
                                   onChange={(e) => {
-                                    if (e.target.value) {
-                                      swapTwoAreas(area.name, e.target.value);
-                                      e.target.value = '';
+                                    if (e.target.value !== '') {
+                                      swapRosterMembers(idx, parseInt(e.target.value, 10));
                                     }
                                   }}
-                                  defaultValue=""
-                                  className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                                  className="text-[10px] py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium max-w-[95px] sm:max-w-[120px] truncate"
                                 >
-                                  <option value="" disabled>Swap...</option>
-                                  {orderedAreas.filter(o => o.name !== area.name).map(o => (
-                                    <option key={o.name} value={o.name}>Swap with {o.name}</option>
-                                  ))}
+                                  <option value="" disabled>Swap Turn...</option>
+                                  {rosterMembers.map((otherM, oIdx) => {
+                                    if (oIdx === idx) return null;
+                                    return (
+                                      <option key={oIdx} value={oIdx}>
+                                        Day {oIdx + 1}: {otherM.name} ({otherM.division || 'Area'})
+                                      </option>
+                                    );
+                                  })}
                                 </select>
 
-                                {/* Expand houses toggle */}
                                 <button
                                   type="button"
-                                  onClick={() => setExpandedAreas({ ...expandedAreas, [area.name]: !isExpanded })}
-                                  className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                                  onClick={() => removeMemberFromRoster(idx)}
+                                  title="Remove from Roster"
+                                  className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
                                 >
-                                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                  <X className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </div>
-
-                            {/* Houses in this area */}
-                            {isExpanded && (
-                              <div className="px-3 pb-2.5 pt-1 border-t border-slate-100 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-900/30">
-                                <span className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase">
-                                  Houses in {area.name}:
-                                </span>
-                                <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-600 dark:text-slate-300">
-                                  {area.members.map(m => (
-                                    <div key={m.id} className="truncate">
-                                      • {m.name} {m.idNumber && <span className="text-slate-400 font-mono">#{m.idNumber}</span>}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                          );
+                        })
+                      )}
                     </div>
                   </div>
-                ) : (
-                  /* ================= Individual Mode ================= */
-                  <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase">
-                        Select Houses in Rotation ({generateForm.selectedMemberIds.length} days):
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setGenerateForm({ ...generateForm, selectedMemberIds: members.map(m => m.id) })}
-                          className="text-[11px] text-blue-600 font-semibold hover:underline"
-                        >
-                          Select All
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setGenerateForm({ ...generateForm, selectedMemberIds: [] })}
-                          className="text-[11px] text-slate-400 hover:underline"
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="max-h-56 overflow-y-auto space-y-1 p-1">
-                      {members.map(m => {
-                        const isChecked = generateForm.selectedMemberIds.includes(m.id);
-                        return (
-                          <label
-                            key={m.id}
-                            className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer border transition-all ${
-                              isChecked
-                                ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200'
-                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={(e) => {
-                                  const next = e.target.checked
-                                    ? [...generateForm.selectedMemberIds, m.id]
-                                    : generateForm.selectedMemberIds.filter(id => id !== m.id);
-                                  setGenerateForm({ ...generateForm, selectedMemberIds: next });
-                                }}
-                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                              />
-                              <span className="font-semibold">{m.name}</span>
-                              {m.idNumber && <span className="font-mono text-[10px] text-slate-400">#{m.idNumber}</span>}
-                            </div>
-                            {m.division && <span className="text-[10px] opacity-75">{m.division}</span>}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
-                <button
-                  type="button"
-                  onClick={() => setShowGenerateModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={
-                    submitting ||
-                    (generateMode === 'area'
-                      ? selectedAreaNames.length === 0
-                      : generateForm.selectedMemberIds.length === 0)
-                  }
-                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md disabled:opacity-50 transition-all"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  {submitting
-                    ? 'Generating...'
-                    : generateMode === 'area'
-                    ? `Generate Roster (${orderedAreas.filter(a => selectedAreaNames.includes(a.name)).reduce((sum, a) => sum + a.members.length, 0)} Days)`
-                    : `Generate Roster (${generateForm.selectedMemberIds.length} Days)`}
-                </button>
+              {/* Footer */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  {rosterMembers.length > 0 ? (
+                    <span>
+                      Schedule: <b>{new Date(generateStartDate).toLocaleDateString()}</b> to{' '}
+                      <b>
+                        {(() => {
+                          const end = new Date(generateStartDate);
+                          end.setDate(end.getDate() + rosterMembers.length - 1);
+                          return end.toLocaleDateString();
+                        })()}
+                      </b>{' '}
+                      ({rosterMembers.length} consecutive days)
+                    </span>
+                  ) : (
+                    <span>Add houses from areas above to build the roster</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowGenerateModal(false)}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting || rosterMembers.length === 0}
+                    className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md disabled:opacity-50 transition-all"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {submitting
+                      ? 'Generating...'
+                      : `Generate Roster (${rosterMembers.length} Days)`}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
