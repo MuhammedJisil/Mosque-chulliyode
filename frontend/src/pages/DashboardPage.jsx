@@ -81,7 +81,7 @@ export default function DashboardPage({ onNavigate }) {
         toast.info(`No transactions found for ${periodLabel}. An empty statement will be generated.`);
       }
 
-      const columns = ['Date', 'Particulars', 'Category', 'Mode', 'Income (Rs.)', 'Expense (Rs.)', 'Balance (Rs.)'];
+      const columns = ['Date', 'Particulars', 'Category', 'Mode', 'Income (₹)', 'Expense (₹)', 'Balance (₹)'];
       const rows = ledger.map(entry => {
         let particulars = entry.title || (
           entry.type === 'INCOME'
@@ -109,7 +109,7 @@ export default function DashboardPage({ onNavigate }) {
         { label: 'Net Closing Balance:', value: fmtPdfAmount(summary.closingBalance), bold: true, highlight: true },
       ];
 
-      exportToPdf({
+      await exportToPdf({
         title: 'Financial Statement & Cashbook Ledger',
         subtitle: `Period: ${periodLabel}`,
         dateRange: periodLabel,

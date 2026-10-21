@@ -28,6 +28,7 @@ import {
   Receipt
 } from 'lucide-react';
 import { api } from '../utils/api';
+import DivisionDropdown from '../components/DivisionDropdown';
 import { exportToPdf } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
 import { PAYMENT_MODES } from '../utils/categoriesData';
@@ -216,10 +217,6 @@ export default function MadrasaPage() {
 
   // Select a member as parent -> Auto-prefill name, phone, address, job, division, joining date
   const handleSelectParentMember = (m) => {
-    const count = formData.studentsCount || 1;
-    const perStudent = formData.feePerStudent || 200;
-    const autoFee = count * perStudent;
-
     const joiningDateStr = m.joiningDate
       ? new Date(m.joiningDate).toISOString().split('T')[0]
       : new Date().toISOString().split('T')[0];
@@ -233,31 +230,18 @@ export default function MadrasaPage() {
       job: m.job || '',
       division: m.division || '',
       admissionDate: joiningDateStr,
-      monthlyFee: autoFee,
+      monthlyFee: prev.monthlyFee > 0 ? prev.monthlyFee : 200,
     }));
     setMemberSearchTerm(`${m.name}${m.phone ? ` (${m.phone})` : ''}`);
     setShowMemberDropdown(false);
   };
 
-  // When number of students changes, automatically recalculate monthly fee
+  // When number of students changes: update count without overwriting monthly fee
   const handleStudentsCountChange = (countVal) => {
     const count = Math.max(1, parseInt(countVal) || 1);
-    const rate = parseFloat(formData.feePerStudent) || 200;
     setFormData(prev => ({
       ...prev,
       studentsCount: count,
-      monthlyFee: count * rate,
-    }));
-  };
-
-  // When fee per student changes, auto recalculate monthly fee
-  const handleFeePerStudentChange = (rateVal) => {
-    const rate = parseFloat(rateVal) || 0;
-    const count = parseInt(formData.studentsCount) || 1;
-    setFormData(prev => ({
-      ...prev,
-      feePerStudent: rateVal,
-      monthlyFee: count * rate,
     }));
   };
 
@@ -1318,18 +1302,13 @@ export default function MadrasaPage() {
                   />
                 </div>
 
-                {/* Prefilled: Area / Division & Admission Date */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Area / Division & Admission Date */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Area / Division (Auto-prefilled)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Chulliyode, Area 1"
+                    <DivisionDropdown
+                      label="Area / Division"
                       value={formData.division}
-                      onChange={(e) => setFormData({ ...formData, division: e.target.value })}
-                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      onChange={(val) => setFormData({ ...formData, division: val })}
                     />
                   </div>
 
@@ -1341,17 +1320,17 @@ export default function MadrasaPage() {
                       type="date"
                       value={formData.admissionDate}
                       onChange={(e) => setFormData({ ...formData, admissionDate: e.target.value })}
-                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
                   </div>
                 </div>
 
-                {/* Number of Students & Auto-Calculating Monthly Fee */}
-                <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/20 rounded-xl border border-blue-200/80 dark:border-blue-900/40 space-y-3">
+                {/* Number of Students & Direct Editable Monthly Fee */}
+                <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/20 rounded-xl border border-blue-200/80 dark:border-blue-900/40 space-y-2">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-blue-900 dark:text-blue-300 mb-1">
-                        Number of Students *
+                        Number of Children / Students *
                       </label>
                       <input
                         type="number"
@@ -1365,42 +1344,25 @@ export default function MadrasaPage() {
 
                     <div>
                       <label className="block text-xs font-bold text-blue-900 dark:text-blue-300 mb-1">
-                        Fee per Student (₹)
+                        Monthly Fee (₹) *
                       </label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">₹</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
                         <input
                           type="number"
                           min="0"
-                          value={formData.feePerStudent}
-                          onChange={(e) => handleFeePerStudentChange(e.target.value)}
-                          className="w-full pl-7 pr-3 py-2 text-sm font-semibold rounded-xl border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          required
+                          value={formData.monthlyFee}
+                          onChange={(e) => setFormData({ ...formData, monthlyFee: parseFloat(e.target.value) || 0 })}
+                          placeholder="e.g. 200"
+                          className="w-full pl-7 pr-3 py-2 text-sm font-bold text-emerald-600 dark:text-emerald-400 rounded-xl border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                         />
                       </div>
                     </div>
                   </div>
-
-                  {/* Auto Calculated Monthly Fee */}
-                  <div className="p-2.5 bg-white dark:bg-slate-800 rounded-lg border border-blue-200 dark:border-blue-800 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-                        Total Monthly Fee:
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        Auto-calculated ({formData.studentsCount || 1} student(s) × ₹{formData.feePerStudent || 200})
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-slate-400 font-bold">₹</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={formData.monthlyFee}
-                        onChange={(e) => setFormData({ ...formData, monthlyFee: parseFloat(e.target.value) || 0 })}
-                        className="w-24 px-2 py-1 text-sm font-bold text-emerald-600 dark:text-emerald-400 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-right focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    💡 Monthly fee can be adjusted freely (does not auto-increment with student count, allowing custom concessions for families with multiple children).
+                  </p>
                 </div>
 
                 {/* Opening Balance (Fee Arrears) & Status */}

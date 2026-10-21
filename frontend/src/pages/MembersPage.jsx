@@ -5,6 +5,7 @@ import { openWhatsAppDueReminder } from '../utils/whatsapp';
 import { exportToPdf, exportFamilySurveyPdf } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
 import Pagination from '../components/Pagination';
+import DivisionDropdown from '../components/DivisionDropdown';
 import { PAYMENT_MODES, MONTH_NAMES } from '../utils/categoriesData';
 import { useToast } from '../context/ToastContext';
 import {
@@ -1799,15 +1800,10 @@ export default function MembersPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Division / Area
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Chulliyode, Ward 3"
+                  <DivisionDropdown
+                    label="Division / Area"
                     value={formData.division}
-                    onChange={(e) => setFormData({ ...formData, division: e.target.value })}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    onChange={(val) => setFormData({ ...formData, division: val })}
                   />
                 </div>
 

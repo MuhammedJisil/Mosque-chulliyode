@@ -1,19 +1,39 @@
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
+let cachedFontBase64 = null;
+
+const loadNotoSansFont = async (doc) => {
+  try {
+    if (!cachedFontBase64) {
+      const res = await fetch('/fonts/NotoSans-Regular.ttf');
+      if (!res.ok) throw new Error('Font file fetch failed');
+      const buffer = await res.arrayBuffer();
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      cachedFontBase64 = btoa(binary);
+    }
+    doc.addFileToVFS('NotoSans.ttf', cachedFontBase64);
+    doc.addFont('NotoSans.ttf', 'NotoSans', 'normal');
+    doc.setFont('NotoSans', 'normal');
+    return true;
+  } catch (err) {
+    console.warn('Could not load custom NotoSans font for PDF, falling back to Helvetica:', err);
+    return false;
+  }
+};
+
 /**
- * Safe currency formatter for jsPDF.
- * jsPDF Helvetica does NOT support ₹ (U+20B9) — it renders as superscript "¹".
- * Always use "Rs." inside PDF-rendered strings.
+ * Currency formatter for jsPDF with ₹ symbol.
  */
 export const fmtPdfAmount = (num) =>
-  'Rs. ' + Number(num || 0).toLocaleString('en-IN');
+  '₹ ' + Number(num || 0).toLocaleString('en-IN');
 
-// Strips ₹ glyph from any string destined for jsPDF
-const safe = (str) =>
-  typeof str === 'string' ? str.replace(/₹/g, 'Rs.') : str;
-
-export const exportToPdf = ({
+export const exportToPdf = async ({
   title = 'Masjid al noor Financial Statement',
   subtitle = '',
   dateRange = 'All Records',
@@ -28,6 +48,15 @@ export const exportToPdf = ({
     format: 'a4'
   });
 
+  const fontLoaded = await loadNotoSansFont(doc);
+  const fontName = fontLoaded ? 'NotoSans' : 'helvetica';
+
+  // If font failed to load, fallback to replace ₹ with Rs.
+  const safe = (str) => {
+    if (typeof str !== 'string') return str;
+    return fontLoaded ? str : str.replace(/₹/g, 'Rs.');
+  };
+
   const pageW = doc.internal.pageSize.width;
 
   // ── Emerald Green Header Banner ─────────────────────────────────────────────
@@ -35,13 +64,13 @@ export const exportToPdf = ({
   doc.rect(0, 0, pageW, 80, 'F');
 
   // Main title
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(fontName, 'bold');
   doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
   doc.text('Masjid al noor', pageW / 2, 30, { align: 'center' });
 
   // Subtitle
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(fontName, 'normal');
   doc.setFontSize(10);
   doc.setTextColor(220, 252, 231);
   doc.text('sirajul huda sangam chulliyode', pageW / 2, 48, { align: 'center' });
@@ -77,11 +106,13 @@ export const exportToPdf = ({
     headStyles: {
       fillColor: [6, 78, 59],
       textColor: [255, 255, 255],
+      font: fontName,
       fontStyle: 'bold',
       fontSize: 9,
       halign: 'left'
     },
     bodyStyles: {
+      font: fontName,
       fontSize: 8.5,
       textColor: [30, 41, 59]
     },
@@ -91,6 +122,7 @@ export const exportToPdf = ({
     margin: { left: 40, right: 40 },
     didDrawPage: () => {
       const str = `Page ${doc.internal.getNumberOfPages()}`;
+      doc.setFont(fontName, 'normal');
       doc.setFontSize(8);
       doc.setTextColor(148, 163, 184);
       doc.text(str, pageW / 2, doc.internal.pageSize.height - 20, { align: 'center' });
@@ -112,7 +144,7 @@ export const exportToPdf = ({
 
     let sumY = finalY + 16;
     summaryRows.forEach(item => {
-      doc.setFont('helvetica', item.bold ? 'bold' : 'normal');
+      doc.setFont(fontName, item.bold ? 'bold' : 'normal');
       doc.setFontSize(9);
       doc.setTextColor(
         item.highlight ? 5 : 51,
@@ -133,7 +165,7 @@ export const exportToPdf = ({
     finalY = 60;
   }
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(fontName, 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(100, 116, 139);
   doc.text('_____________________________', 40, finalY + 30);
