@@ -31,7 +31,8 @@ import {
   CalendarDays,
   ArrowUp,
   ArrowDown,
-  Layers
+  Layers,
+  Users
 } from 'lucide-react';
 
 export default function FoodSchedulePage() {
