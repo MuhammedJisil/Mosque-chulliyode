@@ -300,7 +300,7 @@ export default function StaffPage() {
     exportToExcel({
       data: excelRows,
       sheetName: 'Staff & Payroll',
-      fileName: 'Jamia_AnNoor_Staff_List.xlsx'
+      fileName: 'Jamia_Al_Noor_Staff_List.xlsx'
     });
   };
 
@@ -761,7 +761,7 @@ export default function StaffPage() {
                               ? 'bg-amber-200/80 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200'
                               : 'bg-rose-200/80 dark:bg-rose-900/80 text-rose-800 dark:text-rose-200'
                           }`}>
-                            ₹{mth.remainingDue.toLocaleString('en-IN')} {mth.isPartial ? '(Part)' : ''}
+                            ₹{Number(mth.remainingDue ?? payoutStaff?.salary ?? 0).toLocaleString('en-IN')} {mth.isPartial ? '(Part)' : ''}
                           </span>
                           {isSelected && '✓'}
                         </button>

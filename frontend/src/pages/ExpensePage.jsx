@@ -219,7 +219,7 @@ export default function ExpensePage() {
     exportToExcel({
       data: excelRows,
       sheetName: 'Expenses',
-      fileName: `Jamia_AnNoor_Expense_${periodLabel.replace(/\s+/g, '_')}.xlsx`
+      fileName: `Jamia_Al_Noor_Expense_${periodLabel.replace(/\s+/g, '_')}.xlsx`
     });
   };
 

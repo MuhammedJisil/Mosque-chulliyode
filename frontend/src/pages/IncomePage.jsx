@@ -239,7 +239,7 @@ export default function IncomePage() {
     exportToExcel({
       data: excelRows,
       sheetName: 'Income Collections',
-      fileName: `Jamia_AnNoor_Income_${periodLabel.replace(/\s+/g, '_')}.xlsx`
+      fileName: `Jamia_Al_Noor_Income_${periodLabel.replace(/\s+/g, '_')}.xlsx`
     });
   };
 

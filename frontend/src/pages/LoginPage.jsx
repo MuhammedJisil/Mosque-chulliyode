@@ -61,7 +61,7 @@ export default function LoginPage() {
             جامعة النور
           </h1>
           <p className="mt-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400 tracking-widest uppercase">
-            Jamia An-Noor
+            Jamia Al Noor
           </p>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Authorized Admin Portal &amp; Management System

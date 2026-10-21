@@ -85,7 +85,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.get('/', (req, res) => {
   res.status(200).json({
     status: 'online',
-    message: '🕌 جامعة النور (Jamia An-Noor) Masjid Management API is active and awake!',
+    message: '🕌 جامعة النور (Jamia Al Noor) Masjid Management API is active and awake!',
     timestamp: new Date().toISOString()
   });
 });
@@ -95,7 +95,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    service: 'جامعة النور (Jamia An-Noor) Masjid Management System API'
+    service: 'جامعة النور (Jamia Al Noor) Masjid Management System API'
   });
 });
 
