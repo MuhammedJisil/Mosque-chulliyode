@@ -11,14 +11,19 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const { search, category, paymentMode, month, year, startDate, endDate, sort = 'newest' } = req.query;
 
-    const where = {};
+    const isPostgres = Boolean(
+      process.env.RENDER ||
+      process.env.NODE_ENV === 'production' ||
+      (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgres'))
+    );
 
-    if (search && search.trim() !== '') {
+    if (isPostgres && search && search.trim() !== '') {
       const q = search.trim();
       where.OR = [
-        { purpose: { contains: q } },
-        { paidTo: { contains: q } },
-        { description: { contains: q } },
+        { purpose: { contains: q, mode: 'insensitive' } },
+        { paidTo: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+        { category: { contains: q, mode: 'insensitive' } },
       ];
     }
 
@@ -58,10 +63,20 @@ router.get('/', authMiddleware, async (req, res) => {
       date: sort === 'oldest' ? 'asc' : 'desc'
     };
 
-    const expenses = await prisma.expense.findMany({
+    let expenses = await prisma.expense.findMany({
       where,
       orderBy,
     });
+
+    if (search && search.trim() !== '') {
+      const qLower = search.trim().toLowerCase();
+      expenses = expenses.filter(e =>
+        (e.paidTo && e.paidTo.toLowerCase().includes(qLower)) ||
+        (e.purpose && e.purpose.toLowerCase().includes(qLower)) ||
+        (e.description && e.description.toLowerCase().includes(qLower)) ||
+        (e.category && e.category.toLowerCase().includes(qLower))
+      );
+    }
 
     const totalSum = expenses.reduce((acc, curr) => acc + curr.amount, 0);
 

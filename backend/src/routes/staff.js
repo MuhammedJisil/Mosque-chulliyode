@@ -97,13 +97,19 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const { search, category, status } = req.query;
 
+    const isPostgres = Boolean(
+      process.env.RENDER ||
+      process.env.NODE_ENV === 'production' ||
+      (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgres'))
+    );
+
     const where = {};
-    if (search && search.trim() !== '') {
+    if (isPostgres && search && search.trim() !== '') {
       const q = search.trim();
       where.OR = [
-        { name: { contains: q } },
-        { phone: { contains: q } },
-        { description: { contains: q } },
+        { name: { contains: q, mode: 'insensitive' } },
+        { phone: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
       ];
     }
 
@@ -115,7 +121,7 @@ router.get('/', authMiddleware, async (req, res) => {
       where.status = status;
     }
 
-    const staff = await prisma.staff.findMany({
+    let staff = await prisma.staff.findMany({
       where,
       include: {
         payments: {
@@ -124,6 +130,16 @@ router.get('/', authMiddleware, async (req, res) => {
       },
       orderBy: { name: 'asc' }
     });
+
+    if (search && search.trim() !== '') {
+      const qLower = search.trim().toLowerCase();
+      staff = staff.filter(s =>
+        (s.name && s.name.toLowerCase().includes(qLower)) ||
+        (s.phone && s.phone.toLowerCase().includes(qLower)) ||
+        (s.category && s.category.toLowerCase().includes(qLower)) ||
+        (s.description && s.description.toLowerCase().includes(qLower))
+      );
+    }
 
     const staffWithPending = staff.map(s => {
       const pendingInfo = calculateStaffPending(s, s.payments);

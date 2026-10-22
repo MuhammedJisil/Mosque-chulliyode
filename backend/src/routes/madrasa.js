@@ -102,18 +102,18 @@ router.get('/', authMiddleware, async (req, res) => {
     );
 
     const where = {};
-    if (search && search.trim() !== '') {
+    if (isPostgres && search && search.trim() !== '') {
       const q = search.trim();
       where.OR = [
-        { parentName: stringFilter(q) },
-        { parentPhone: stringFilter(q) },
-        { job: stringFilter(q) },
-        { division: stringFilter(q) },
-        { studentName: stringFilter(q) },
-        { classLevel: stringFilter(q) },
-        { admissionNo: stringFilter(q) },
-        { member: { name: stringFilter(q) } },
-        { member: { phone: stringFilter(q) } },
+        { parentName: { contains: q, mode: 'insensitive' } },
+        { parentPhone: { contains: q, mode: 'insensitive' } },
+        { job: { contains: q, mode: 'insensitive' } },
+        { division: { contains: q, mode: 'insensitive' } },
+        { studentName: { contains: q, mode: 'insensitive' } },
+        { classLevel: { contains: q, mode: 'insensitive' } },
+        { admissionNo: { contains: q, mode: 'insensitive' } },
+        { member: { name: { contains: q, mode: 'insensitive' } } },
+        { member: { phone: { contains: q, mode: 'insensitive' } } },
       ];
     }
 
@@ -162,6 +162,22 @@ router.get('/', authMiddleware, async (req, res) => {
         console.warn('Retry after autoMigrate failed, returning empty list:', retryErr.message);
         return [];
       });
+    }
+
+    // In-memory case-insensitive filter (ensures 100% case-insensitivity on SQLite & Postgres)
+    if (search && search.trim() !== '') {
+      const qLower = search.trim().toLowerCase();
+      students = students.filter(s =>
+        (s.parentName && s.parentName.toLowerCase().includes(qLower)) ||
+        (s.parentPhone && s.parentPhone.toLowerCase().includes(qLower)) ||
+        (s.studentName && s.studentName.toLowerCase().includes(qLower)) ||
+        (s.admissionNo && s.admissionNo.toLowerCase().includes(qLower)) ||
+        (s.division && s.division.toLowerCase().includes(qLower)) ||
+        (s.job && s.job.toLowerCase().includes(qLower)) ||
+        (s.address && s.address.toLowerCase().includes(qLower)) ||
+        (s.member?.name && s.member.name.toLowerCase().includes(qLower)) ||
+        (s.member?.phone && s.member.phone.toLowerCase().includes(qLower))
+      );
     }
 
     // Auto-transition students whose endDate is reached or past to Inactive in database

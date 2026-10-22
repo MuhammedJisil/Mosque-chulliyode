@@ -103,15 +103,15 @@ router.get('/', authMiddleware, async (req, res) => {
     );
 
     const where = {};
-    if (search && search.trim() !== '') {
+    if (isPostgres && search && search.trim() !== '') {
       const q = search.trim();
       where.OR = [
-        { name: stringFilter(q) },
-        { phone: stringFilter(q) },
-        { address: stringFilter(q) },
-        { idNumber: stringFilter(q) },
-        { division: stringFilter(q) },
-        { job: stringFilter(q) },
+        { name: { contains: q, mode: 'insensitive' } },
+        { phone: { contains: q, mode: 'insensitive' } },
+        { address: { contains: q, mode: 'insensitive' } },
+        { idNumber: { contains: q, mode: 'insensitive' } },
+        { division: { contains: q, mode: 'insensitive' } },
+        { job: { contains: q, mode: 'insensitive' } },
       ];
     }
 
@@ -132,7 +132,7 @@ router.get('/', authMiddleware, async (req, res) => {
       data: { status: 'Inactive' }
     }).catch(() => {});
 
-    const members = await prisma.member.findMany({
+    let members = await prisma.member.findMany({
       where,
       include: {
         payments: {
@@ -141,6 +141,19 @@ router.get('/', authMiddleware, async (req, res) => {
       },
       orderBy: { name: 'asc' }
     });
+
+    // In-memory case-insensitive filter (ensures 100% case-insensitivity on SQLite & Postgres)
+    if (search && search.trim() !== '') {
+      const qLower = search.trim().toLowerCase();
+      members = members.filter(m =>
+        (m.name && m.name.toLowerCase().includes(qLower)) ||
+        (m.phone && m.phone.toLowerCase().includes(qLower)) ||
+        (m.address && m.address.toLowerCase().includes(qLower)) ||
+        (m.idNumber && m.idNumber.toLowerCase().includes(qLower)) ||
+        (m.division && m.division.toLowerCase().includes(qLower)) ||
+        (m.job && m.job.toLowerCase().includes(qLower))
+      );
+    }
 
     let membersWithDue = members.map(m => {
       const isPastEndDate = m.endDate && new Date(m.endDate) <= new Date();

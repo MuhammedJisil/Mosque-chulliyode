@@ -29,13 +29,21 @@ router.get('/', authMiddleware, async (req, res) => {
       ];
     }
 
-    if (search && search.trim() !== '') {
+    const isPostgres = Boolean(
+      process.env.RENDER ||
+      process.env.NODE_ENV === 'production' ||
+      (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgres'))
+    );
+
+    if (isPostgres && search && search.trim() !== '') {
       const q = search.trim();
       const searchConditions = [
-        { donorName: { contains: q } },
-        { donorPhone: { contains: q } },
-        { donorAddress: { contains: q } },
-        { description: { contains: q } },
+        { donorName: { contains: q, mode: 'insensitive' } },
+        { donorPhone: { contains: q, mode: 'insensitive' } },
+        { donorAddress: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+        { receiptNo: { contains: q, mode: 'insensitive' } },
+        { category: { contains: q, mode: 'insensitive' } },
       ];
       if (where.OR) {
         where.AND = [
@@ -84,10 +92,22 @@ router.get('/', authMiddleware, async (req, res) => {
       date: sort === 'oldest' ? 'asc' : 'desc'
     };
 
-    const incomes = await prisma.income.findMany({
+    let incomes = await prisma.income.findMany({
       where,
       orderBy,
     });
+
+    if (search && search.trim() !== '') {
+      const qLower = search.trim().toLowerCase();
+      incomes = incomes.filter(i =>
+        (i.donorName && i.donorName.toLowerCase().includes(qLower)) ||
+        (i.donorPhone && i.donorPhone.toLowerCase().includes(qLower)) ||
+        (i.donorAddress && i.donorAddress.toLowerCase().includes(qLower)) ||
+        (i.description && i.description.toLowerCase().includes(qLower)) ||
+        (i.receiptNo && i.receiptNo.toLowerCase().includes(qLower)) ||
+        (i.category && i.category.toLowerCase().includes(qLower))
+      );
+    }
 
     const totalSum = incomes.reduce((acc, curr) => acc + curr.amount, 0);
 

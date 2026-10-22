@@ -155,27 +155,32 @@ async function autoMigrate() {
         );
       `).catch(() => {});
 
-      // Add missing columns to SQLite if needed
+      // Add missing columns to SQLite only if they do not exist
       const sqliteAddCols = [
-        `ALTER TABLE "Member" ADD COLUMN "job" TEXT;`,
-        `ALTER TABLE "Member" ADD COLUMN "endDate" DATETIME;`,
-        `ALTER TABLE "Member" ADD COLUMN "hasMadrasa" BOOLEAN DEFAULT 0;`,
-        `ALTER TABLE "Member" ADD COLUMN "madrasaChildrenCount" INTEGER DEFAULT 0;`,
-        `ALTER TABLE "Member" ADD COLUMN "madrasaMonthlyFee" REAL DEFAULT 0.0;`,
-        `ALTER TABLE "MadrasaStudent" ADD COLUMN "address" TEXT;`,
-        `ALTER TABLE "MadrasaStudent" ADD COLUMN "endDate" DATETIME;`,
-        `ALTER TABLE "MadrasaStudent" ADD COLUMN "job" TEXT;`,
-        `ALTER TABLE "MadrasaStudent" ADD COLUMN "studentsCount" INTEGER DEFAULT 1;`,
-        `ALTER TABLE "MadrasaStudent" ADD COLUMN "feePerStudent" REAL DEFAULT 200.0;`,
-        `ALTER TABLE "Income" ADD COLUMN "madrasaPaymentId" INTEGER;`,
-        `ALTER TABLE "Income" ADD COLUMN "studentId" INTEGER;`,
+        { table: 'Member', col: 'job', type: 'TEXT' },
+        { table: 'Member', col: 'endDate', type: 'DATETIME' },
+        { table: 'Member', col: 'hasMadrasa', type: 'BOOLEAN DEFAULT 0' },
+        { table: 'Member', col: 'madrasaChildrenCount', type: 'INTEGER DEFAULT 0' },
+        { table: 'Member', col: 'madrasaMonthlyFee', type: 'REAL DEFAULT 0.0' },
+        { table: 'MadrasaStudent', col: 'address', type: 'TEXT' },
+        { table: 'MadrasaStudent', col: 'endDate', type: 'DATETIME' },
+        { table: 'MadrasaStudent', col: 'job', type: 'TEXT' },
+        { table: 'MadrasaStudent', col: 'studentsCount', type: 'INTEGER DEFAULT 1' },
+        { table: 'MadrasaStudent', col: 'feePerStudent', type: 'REAL DEFAULT 200.0' },
+        { table: 'Income', col: 'madrasaPaymentId', type: 'INTEGER' },
+        { table: 'Income', col: 'studentId', type: 'INTEGER' },
+        { table: 'Income', col: 'receiptNo', type: 'TEXT' },
       ];
 
-      for (const sql of sqliteAddCols) {
+      for (const item of sqliteAddCols) {
         try {
-          await prisma.$executeRawUnsafe(sql);
+          const cols = await prisma.$queryRawUnsafe(`PRAGMA table_info("${item.table}");`);
+          const existing = cols.map(c => c.name);
+          if (!existing.includes(item.col)) {
+            await prisma.$executeRawUnsafe(`ALTER TABLE "${item.table}" ADD COLUMN "${item.col}" ${item.type};`);
+          }
         } catch (e) {
-          // In SQLite, "duplicate column name" is expected if column already exists
+          // ignore safely
         }
       }
 

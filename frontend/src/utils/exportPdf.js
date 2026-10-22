@@ -12,13 +12,15 @@ const loadNotoSansFont = async (doc) => {
       let binary = '';
       const bytes = new Uint8Array(buffer);
       const len = bytes.byteLength;
-      for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
+      const CHUNK = 8192;
+      for (let i = 0; i < len; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + CHUNK, len)));
       }
       cachedFontBase64 = btoa(binary);
     }
     doc.addFileToVFS('NotoSans.ttf', cachedFontBase64);
     doc.addFont('NotoSans.ttf', 'NotoSans', 'normal');
+    doc.addFont('NotoSans.ttf', 'NotoSans', 'bold');
     doc.setFont('NotoSans', 'normal');
     return true;
   } catch (err) {
@@ -54,7 +56,7 @@ export const exportToPdf = async ({
   // If font failed to load, fallback to replace ₹ with Rs.
   const safe = (str) => {
     if (typeof str !== 'string') return str;
-    return fontLoaded ? str : str.replace(/₹/g, 'Rs.');
+    return fontLoaded ? str : str.replace(/₹/g, 'Rs. ');
   };
 
   const pageW = doc.internal.pageSize.width;
@@ -130,33 +132,38 @@ export const exportToPdf = async ({
   });
 
   // ── Summary box ─────────────────────────────────────────────────────────────
-  let finalY = doc.lastAutoTable.finalY + 20;
+  let finalY = doc.lastAutoTable.finalY + 18;
 
   if (summaryRows && summaryRows.length > 0) {
-    if (finalY + (summaryRows.length * 18) > doc.internal.pageSize.height - 80) {
+    const boxW = 280;
+    const boxX = pageW - 40 - boxW;
+    const rowH = 19;
+    const boxH = (summaryRows.length * rowH) + 16;
+
+    if (finalY + boxH > doc.internal.pageSize.height - 70) {
       doc.addPage();
-      finalY = 50;
+      finalY = 40;
     }
 
     doc.setFillColor(240, 253, 244);
     doc.setDrawColor(167, 243, 208);
-    doc.rect(pageW - 260, finalY, 220, (summaryRows.length * 20) + 12, 'FD');
+    doc.roundedRect(boxX, finalY, boxW, boxH, 4, 4, 'FD');
 
     let sumY = finalY + 16;
     summaryRows.forEach(item => {
       doc.setFont(fontName, item.bold ? 'bold' : 'normal');
-      doc.setFontSize(9);
+      doc.setFontSize(8.5);
       doc.setTextColor(
         item.highlight ? 5 : 51,
         item.highlight ? 150 : 65,
         item.highlight ? 105 : 85
       );
-      doc.text(safe(item.label || ''), pageW - 250, sumY);
-      doc.text(safe(item.value || ''), pageW - 50, sumY, { align: 'right' });
-      sumY += 18;
+      doc.text(safe(item.label || ''), boxX + 12, sumY);
+      doc.text(safe(item.value || ''), boxX + boxW - 12, sumY, { align: 'right' });
+      sumY += rowH;
     });
 
-    finalY = sumY + 40;
+    finalY = finalY + boxH + 25;
   }
 
   // ── Signatures ──────────────────────────────────────────────────────────────
