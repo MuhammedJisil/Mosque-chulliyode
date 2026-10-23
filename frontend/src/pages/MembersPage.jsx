@@ -4,6 +4,7 @@ import { api } from '../utils/api';
 import { openWhatsAppDueReminder } from '../utils/whatsapp';
 import { exportToPdf, exportFamilySurveyPdf } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import Pagination from '../components/Pagination';
 import DivisionDropdown from '../components/DivisionDropdown';
 import { PAYMENT_MODES, MONTH_NAMES } from '../utils/categoriesData';
@@ -98,10 +99,6 @@ export default function MembersPage() {
     paymentMode: PAYMENT_MODES[0],
     notes: '',
   });
-
-  // Advance Month Adder State in Payment Modal
-  const [customAdvanceMonth, setCustomAdvanceMonth] = useState(currentMonth);
-  const [customAdvanceYear, setCustomAdvanceYear] = useState(currentYear);
 
   // Debounce search input: waits 350ms after user pauses continuous typing
   useEffect(() => {
@@ -278,38 +275,83 @@ export default function MembersPage() {
     }
   };
 
-  // Open Payment Modal (Supports both past dues & future/advance payments)
-  const handleOpenPayment = (m) => {
-    setActivePayingMember(m);
-    let initialDue = [];
-    if (m.dueMonths && m.dueMonths.length > 0) {
-      initialDue = [m.dueMonths[0]];
-    } else {
-      // Find the next upcoming month after latest payment or current month
-      let nextM = currentMonth;
-      let nextY = currentYear;
-      if (m.payments && m.payments.length > 0) {
-        const sortedPayments = [...m.payments].filter(p => p.month > 0).sort((a, b) => (b.year - a.year) || (b.month - a.month));
+  // Helper: Computes the covered months for a given payment amount
+  // 1. First takes pending due months up to calculatedCount
+  // 2. If entered amount is more than due months (or member has 0 dues), automatically adds consecutive future/advance months!
+  const computeCoveredMonths = (member, amount) => {
+    if (!member) return [];
+    const rate = member.monthlyDonation || 100;
+    if (rate <= 0) return [];
+    const calculatedCount = Math.floor(amount / rate);
+    if (calculatedCount <= 0) return [];
+
+    const dueMonths = member.dueMonths || [];
+    const selected = [];
+
+    // 1. Take past due months first
+    const duesToTake = Math.min(calculatedCount, dueMonths.length);
+    for (let i = 0; i < duesToTake; i++) {
+      selected.push(dueMonths[i]);
+    }
+
+    // 2. Add extra future months consecutively
+    const extraCount = calculatedCount - duesToTake;
+    if (extraCount > 0) {
+      let lastM, lastY;
+      if (selected.length > 0) {
+        lastM = selected[selected.length - 1].month;
+        lastY = selected[selected.length - 1].year;
+      } else {
+        // Find after latest payment or current month
+        const sortedPayments = member.payments && member.payments.length > 0
+          ? [...member.payments].filter(p => p.month > 0).sort((a, b) => (b.year - a.year) || (b.month - a.month))
+          : [];
         if (sortedPayments.length > 0) {
-          const lastPaid = sortedPayments[0];
-          nextM = lastPaid.month + 1;
-          nextY = lastPaid.year;
-          if (nextM > 12) {
-            nextM = 1;
-            nextY++;
+          lastM = sortedPayments[0].month;
+          lastY = sortedPayments[0].year;
+        } else {
+          lastM = currentMonth - 1;
+          lastY = currentYear;
+          if (lastM === 0) {
+            lastM = 12;
+            lastY -= 1;
           }
         }
       }
-      initialDue = [{
-        month: nextM,
-        year: nextY,
-        label: `${MONTH_NAMES[nextM - 1]} ${nextY} (Advance)`
-      }];
+
+      for (let i = 0; i < extraCount; i++) {
+        lastM += 1;
+        if (lastM > 12) {
+          lastM = 1;
+          lastY += 1;
+        }
+        selected.push({
+          month: lastM,
+          year: lastY,
+          label: `${MONTH_NAMES[lastM - 1]} ${lastY} (Advance)`
+        });
+      }
+    }
+
+    return selected;
+  };
+
+  // Open Payment Modal (Supports both past dues & automatic future/advance payments)
+  const handleOpenPayment = (m) => {
+    setActivePayingMember(m);
+    const rate = m.monthlyDonation || 100;
+    let initialDue = [];
+
+    if (m.dueMonths && m.dueMonths.length > 0) {
+      initialDue = [...m.dueMonths];
+    } else {
+      initialDue = computeCoveredMonths(m, rate);
     }
 
     setSelectedPaymentMonths(initialDue);
     const initialMonthsCount = initialDue.length;
-    const initialMembership = initialMonthsCount * (m.monthlyDonation || 100);
+    const initialMembership = initialMonthsCount * rate;
+    const labels = initialDue.map(d => d.label).join(', ');
 
     setPaymentForm({
       paymentDate: new Date().toISOString().split('T')[0],
@@ -318,50 +360,9 @@ export default function MembersPage() {
       membershipAmount: initialMembership,
       openingBalanceAmount: 0,
       paymentMode: 'Cash in Hand',
-      notes: initialDue[0] ? `Subscription paid for ${initialDue[0].label}` : `Opening balance payment`,
+      notes: initialDue.length > 0 ? `Subscription paid for ${labels}` : `Opening balance payment`,
     });
-    setCustomAdvanceMonth(initialDue[0] ? initialDue[0].month : currentMonth);
-    setCustomAdvanceYear(initialDue[0] ? initialDue[0].year : currentYear);
     setShowPaymentModal(true);
-  };
-
-  // Add a future / advance month to the payment batch
-  const handleAddCustomAdvanceMonth = () => {
-    if (!activePayingMember) return;
-    const mNum = parseInt(customAdvanceMonth);
-    const yNum = parseInt(customAdvanceYear);
-    const isAlreadySelected = selectedPaymentMonths.some(d => d.month === mNum && d.year === yNum);
-    if (isAlreadySelected) {
-      toast.info(`${MONTH_NAMES[mNum - 1]} ${yNum} is already selected.`);
-      return;
-    }
-    const alreadyPaid = (activePayingMember.payments || []).some(p => p.month === mNum && p.year === yNum);
-    if (alreadyPaid) {
-      toast.error(`${activePayingMember.name} has already paid for ${MONTH_NAMES[mNum - 1]} ${yNum}.`);
-      return;
-    }
-
-    const newMonthItem = {
-      month: mNum,
-      year: yNum,
-      label: `${MONTH_NAMES[mNum - 1]} ${yNum} (Advance)`
-    };
-
-    const nextSelected = [...selectedPaymentMonths, newMonthItem];
-    setSelectedPaymentMonths(nextSelected);
-
-    const count = nextSelected.length;
-    const rate = activePayingMember.monthlyDonation || 100;
-    const newMembership = count * rate;
-    const labels = nextSelected.map(d => d.label).join(', ');
-
-    setPaymentForm(prev => ({
-      ...prev,
-      membershipAmount: newMembership,
-      notes: `Subscription paid for ${labels}`,
-    }));
-
-    toast.success(`Added ${MONTH_NAMES[mNum - 1]} ${yNum} to payment!`);
   };
 
   // Toggle selection of pending due months
@@ -391,7 +392,7 @@ export default function MembersPage() {
     }));
   };
 
-  // Bidirectional: When user edits membership amount (e.g. types 200, 300)
+  // Bidirectional: When user edits membership amount (e.g. types 200, 300, 400 - auto-advances future months)
   const handleMembershipAmountChange = (val) => {
     const amount = parseFloat(val) || 0;
     if (!activePayingMember) {
@@ -399,24 +400,17 @@ export default function MembersPage() {
       return;
     }
 
-    const rate = activePayingMember.monthlyDonation || 100;
-    const calculatedCount = Math.floor(amount / rate);
+    const selected = computeCoveredMonths(activePayingMember, amount);
+    setSelectedPaymentMonths(selected);
+    const labels = selected.map(d => d.label).join(', ');
 
-    if (activePayingMember.dueMonths && activePayingMember.dueMonths.length > 0 && calculatedCount > 0) {
-      const selected = activePayingMember.dueMonths.slice(0, calculatedCount);
-      setSelectedPaymentMonths(selected);
-      const labels = selected.map(d => d.label).join(', ');
-
-      setPaymentForm(prev => ({
-        ...prev,
-        membershipAmount: val,
-        month: selected[0] ? selected[0].month : prev.month,
-        year: selected[0] ? selected[0].year : prev.year,
-        notes: `Subscription paid for ${labels}`,
-      }));
-    } else {
-      setPaymentForm(prev => ({ ...prev, membershipAmount: val }));
-    }
+    setPaymentForm(prev => ({
+      ...prev,
+      membershipAmount: val,
+      month: selected[0] ? selected[0].month : prev.month,
+      year: selected[0] ? selected[0].year : prev.year,
+      notes: selected.length > 0 ? `Subscription paid for ${labels}` : prev.notes,
+    }));
   };
 
   const handleRecordPayment = async (e) => {
@@ -558,7 +552,7 @@ export default function MembersPage() {
       'Phone': m.phone,
       'Area / Division': m.division || '',
       'Address': m.address || '',
-      'Joining Date': new Date(m.joiningDate).toLocaleDateString('en-GB'),
+      'Joining Date': formatDateDDMMYYYY(m.joiningDate),
       'Monthly Donation (INR)': m.monthlyDonation,
       'Opening Balance (INR)': m.openingBalance || 0,
       'Opening Balance Due (INR)': m.netOpeningBalanceDue || 0,
@@ -761,7 +755,7 @@ export default function MembersPage() {
                       </span>
                       {m.endDate && (
                         <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                          Left: {new Date(m.endDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                          Left: {formatDateDDMMYYYY(m.endDate)}
                         </span>
                       )}
                     </div>
@@ -992,7 +986,7 @@ export default function MembersPage() {
                           </span>
                           {m.endDate && (
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                              Left: {new Date(m.endDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                              Left: {formatDateDDMMYYYY(m.endDate)}
                             </span>
                           )}
                         </div>
@@ -1223,69 +1217,42 @@ export default function MembersPage() {
                 </div>
               )}
 
-              {/* Advance & Future Months Selector */}
-              <div className="p-3 bg-blue-50/60 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40 space-y-2">
+              {/* Automatically Allocated Months Breakdown */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase text-blue-900 dark:text-blue-300">
-                    ➕ Add Future / Advance Month Payment:
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Allocated Months ({selectedPaymentMonths.length})</span>
                   </span>
-                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">
-                    Pay ahead for upcoming years
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                    Automatically calculated
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={customAdvanceMonth}
-                    onChange={(e) => setCustomAdvanceMonth(parseInt(e.target.value))}
-                    className="flex-1 px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
-                  >
-                    {MONTH_NAMES.map((name, i) => (
-                      <option key={i} value={i + 1}>{name}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={customAdvanceYear}
-                    onChange={(e) => setCustomAdvanceYear(parseInt(e.target.value))}
-                    className="w-24 px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
-                  >
-                    {[currentYear, currentYear + 1, currentYear + 2, currentYear + 3, currentYear + 4].map(y => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleAddCustomAdvanceMonth}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add</span>
-                  </button>
-                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Entering an amount greater than dues automatically adds future months consecutively.
+                </p>
 
-                {/* Badges for currently selected batch */}
-                {selectedPaymentMonths.length > 0 && (
-                  <div className="pt-1.5 border-t border-blue-100 dark:border-blue-900/40">
-                    <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
-                      Selected Months in this Payment Batch ({selectedPaymentMonths.length}):
-                    </span>
-                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-                      {selectedPaymentMonths.map((mItem, idx) => (
+                {selectedPaymentMonths.length > 0 ? (
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                    {selectedPaymentMonths.map((mItem, idx) => {
+                      const isAdvance = mItem.label && mItem.label.includes('Advance');
+                      return (
                         <span
                           key={idx}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-600 text-white text-[10px] font-semibold"
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold ${
+                            isAdvance
+                              ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800'
+                              : 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'
+                          }`}
                         >
-                          {mItem.label || `${MONTH_NAMES[mItem.month - 1]} ${mItem.year}`}
-                          <button
-                            type="button"
-                            onClick={() => handleToggleDueMonth(mItem)}
-                            className="hover:text-rose-200 ml-0.5"
-                            title="Remove month from payment"
-                          >
-                            ×
-                          </button>
+                          <span>{mItem.label || `${MONTH_NAMES[mItem.month - 1]} ${mItem.year}`}</span>
                         </span>
-                      ))}
-                    </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-amber-600 dark:text-amber-400 italic">
+                    Enter membership amount above or select dues to allocate payment.
                   </div>
                 )}
               </div>
@@ -1449,10 +1416,10 @@ export default function MembersPage() {
                     {detailMember.address && <span>📍 {detailMember.address}</span>}
                   </div>
                   <div className="text-[11px] text-slate-400 mt-1 flex flex-wrap items-center gap-2">
-                    <span>Joined: {new Date(detailMember.joiningDate).toLocaleDateString('en-GB')}</span>
+                    <span>Joined: {formatDateDDMMYYYY(detailMember.joiningDate)}</span>
                     {detailMember.endDate && (
                       <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                        • Left Mahallu: {new Date(detailMember.endDate).toLocaleDateString('en-GB')}
+                        • Left Mahallu: {formatDateDDMMYYYY(detailMember.endDate)}
                       </span>
                     )}
                   </div>
@@ -1700,7 +1667,7 @@ export default function MembersPage() {
                         )}
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                        {g.paymentMode} • {new Date(g.paymentDate).toLocaleDateString('en-GB')}
+                        {g.paymentMode} • {formatDateDDMMYYYY(g.paymentDate)}
                         {g.receiptNo && <span className="ml-1.5 font-mono text-[10px] text-slate-400">({g.receiptNo})</span>}
                       </div>
                       <div className="text-[10px] text-slate-400 mt-0.5">

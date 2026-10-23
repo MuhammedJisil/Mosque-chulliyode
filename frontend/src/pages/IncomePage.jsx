@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../utils/api';
 import CategoryDropdown from '../components/CategoryDropdown';
 import CustomFieldInput from '../components/CustomFieldInput';
 import CameraCaptureModal from '../components/CameraCaptureModal';
 import ProofViewerModal from '../components/ProofViewerModal';
 import ExportModal from '../components/ExportModal';
-import { exportToPdf } from '../utils/exportPdf';
+import { exportToPdf, exportSingleIncomeReceiptPdf } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
+import { openWhatsAppPaymentReceipt } from '../utils/whatsapp';
 import Pagination from '../components/Pagination';
 import { DEFAULT_INCOME_CATEGORIES, PAYMENT_MODES, MONTH_NAMES } from '../utils/categoriesData';
 import { useToast } from '../context/ToastContext';
@@ -24,7 +26,12 @@ import {
   Calendar,
   X,
   Check,
-  Image as ImageIcon
+  Image as ImageIcon,
+  MessageCircle,
+  FileDown,
+  UserCheck,
+  ChevronDown,
+  User
 } from 'lucide-react';
 
 export default function IncomePage() {
@@ -74,6 +81,12 @@ export default function IncomePage() {
   const [formData, setFormData] = useState(initialFormState);
   const [submitting, setSubmitting] = useState(false);
 
+  // Members list for Donor dropdown & search
+  const [membersList, setMembersList] = useState([]);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [showMemberDropdown, setShowMemberDropdown] = useState(false);
+  const memberDropdownRef = useRef(null);
+
   // Load Incomes
   const fetchIncomes = async () => {
     try {
@@ -102,6 +115,18 @@ export default function IncomePage() {
     }
   };
 
+  // Load members for donor dropdown
+  const fetchMembers = async () => {
+    try {
+      const res = await api.get('/api/members');
+      if (res.success && res.members) {
+        setMembersList(res.members);
+      }
+    } catch (err) {
+      console.error('Failed to load members for donor dropdown:', err);
+    }
+  };
+
   // Load custom categories
   const fetchCustomCategories = async () => {
     try {
@@ -116,7 +141,63 @@ export default function IncomePage() {
 
   useEffect(() => {
     fetchCustomCategories();
+    fetchMembers();
   }, []);
+
+  // Close member dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (memberDropdownRef.current && !memberDropdownRef.current.contains(e.target)) {
+        setShowMemberDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filter members for donor dropdown
+  const filteredMembers = useMemo(() => {
+    if (!memberSearchQuery.trim()) return membersList.slice(0, 35);
+    const q = memberSearchQuery.toLowerCase().trim();
+    return membersList.filter(m =>
+      (m.name && m.name.toLowerCase().includes(q)) ||
+      (m.phone && m.phone.toLowerCase().includes(q)) ||
+      (m.address && m.address.toLowerCase().includes(q)) ||
+      (m.division && m.division.toLowerCase().includes(q)) ||
+      (m.membershipNo && String(m.membershipNo).toLowerCase().includes(q))
+    ).slice(0, 35);
+  }, [membersList, memberSearchQuery]);
+
+  const handleSelectMember = (member) => {
+    setFormData(prev => ({
+      ...prev,
+      donorName: member.name,
+      donorPhone: member.phone || prev.donorPhone || '',
+      donorAddress: member.address || member.division || prev.donorAddress || '',
+    }));
+    setShowMemberDropdown(false);
+    setMemberSearchQuery('');
+    toast.success(`Selected member: ${member.name}`);
+  };
+
+  const handleSendWhatsAppReceipt = (item) => {
+    const matched = membersList.find(m =>
+      (item.memberId && m.id === item.memberId) ||
+      (item.donorName && m.name && m.name.toLowerCase().trim() === item.donorName.toLowerCase().trim())
+    );
+    let balanceText = '';
+    if (matched) {
+      if ((matched.totalDueAmount || 0) > 0) {
+        balanceText = `₹${matched.totalDueAmount} (${matched.dueMonthsCount || 0} month(s) pending)`;
+      } else {
+        balanceText = `₹0 (All subscription dues cleared)`;
+      }
+    }
+    openWhatsAppPaymentReceipt({
+      ...item,
+      donorPhone: item.donorPhone || matched?.phone,
+    }, balanceText);
+  };
 
   useEffect(() => {
     fetchIncomes();
@@ -193,7 +274,7 @@ export default function IncomePage() {
     const rows = dataToExport.map(item => {
       const cleanParticulars = (item.description ? item.description.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() : '') || item.category || '-';
       return [
-        new Date(item.date).toLocaleDateString('en-GB'),
+        formatDateDDMMYYYY(item.date),
         item.donorName || '-',
         cleanParticulars,
         item.category || '-',
@@ -226,7 +307,7 @@ export default function IncomePage() {
     });
 
     const excelRows = dataToExport.map(item => ({
-      'Date': new Date(item.date).toLocaleDateString('en-GB'),
+      'Date': formatDateDDMMYYYY(item.date),
       'Donor Name': item.donorName,
       'Donor Phone': item.donorPhone || '',
       'Address': item.donorAddress || '',
@@ -239,7 +320,7 @@ export default function IncomePage() {
     exportToExcel({
       data: excelRows,
       sheetName: 'Income Collections',
-      fileName: `Jamia_Al_Noor_Income_${periodLabel.replace(/\s+/g, '_')}.xlsx`
+      fileName: `Masjid_Al_Noor_Income_${periodLabel.replace(/\s+/g, '_')}.xlsx`
     });
   };
 
@@ -480,7 +561,7 @@ export default function IncomePage() {
                       {item.donorName}
                     </div>
                     <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                      <span>{new Date(item.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                      <span>{formatDateDDMMYYYY(item.date)}</span>
                       <span>•</span>
                       <span>{item.paymentMode}</span>
                     </div>
@@ -497,6 +578,22 @@ export default function IncomePage() {
                         <ImageIcon className="w-4 h-4" />
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => exportSingleIncomeReceiptPdf(item)}
+                      className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                      title="Download Bill Receipt (PDF)"
+                    >
+                      <FileDown className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSendWhatsAppReceipt(item)}
+                      className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                      title="Send WhatsApp Receipt"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleOpenView(item)}
@@ -575,7 +672,7 @@ export default function IncomePage() {
                 paginatedIncomes.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
                     <td className="py-3.5 px-4 font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                      {new Date(item.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {formatDateDDMMYYYY(item.date)}
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="font-semibold text-slate-900 dark:text-white">
@@ -627,6 +724,22 @@ export default function IncomePage() {
                     </td>
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => exportSingleIncomeReceiptPdf(item)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors"
+                          title="Download Bill Receipt (PDF)"
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSendWhatsAppReceipt(item)}
+                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors"
+                          title="Send WhatsApp Receipt"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleOpenView(item)}
@@ -727,7 +840,7 @@ export default function IncomePage() {
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400 uppercase font-semibold text-[10px]">Receipt Date</span>
                   <span className="font-medium text-slate-700 dark:text-slate-300">
-                    📅 {new Date(viewingItem.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    📅 {formatDateDDMMYYYY(viewingItem.date)}
                   </span>
                 </div>
               </div>
@@ -779,25 +892,48 @@ export default function IncomePage() {
               )}
             </div>
 
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowViewModal(false);
-                  handleOpenEdit(viewingItem);
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-                Edit Record
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowViewModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
-              >
-                Close
-              </button>
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => exportSingleIncomeReceiptPdf(viewingItem)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 border border-blue-200 dark:border-blue-800 transition-colors"
+                  title="Generate Official Bill Receipt (PDF)"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  <span>Download Bill</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendWhatsAppReceipt(viewingItem)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 transition-colors"
+                  title="Send Receipt via WhatsApp"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>WhatsApp</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowViewModal(false);
+                    handleOpenEdit(viewingItem);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowViewModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -843,19 +979,109 @@ export default function IncomePage() {
                     required
                   />
 
-                  {/* Donor Name */}
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                      Donor Name <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Haji Farooq or General Donor"
-                      value={formData.donorName}
-                      onChange={(e) => setFormData({ ...formData, donorName: e.target.value })}
-                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    />
+                  {/* Donor Name with Member Dropdown & Search */}
+                  <div className="relative" ref={memberDropdownRef}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300">
+                        Donor Name <span className="text-rose-500">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMemberDropdown(prev => !prev);
+                          setMemberSearchQuery('');
+                        }}
+                        className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                      >
+                        <UserCheck className="w-3 h-3" />
+                        <span>Select Member ({membersList.length})</span>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Type name or select member..."
+                        value={formData.donorName}
+                        onChange={(e) => {
+                          setFormData({ ...formData, donorName: e.target.value });
+                          setMemberSearchQuery(e.target.value);
+                          if (!showMemberDropdown) setShowMemberDropdown(true);
+                        }}
+                        onFocus={() => setShowMemberDropdown(true)}
+                        className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-8"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowMemberDropdown(prev => !prev)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                        title="Toggle Member List"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Member Dropdown Combobox Menu */}
+                    {showMemberDropdown && (
+                      <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden max-h-64 flex flex-col">
+                        <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Search member by name, phone, area..."
+                              value={memberSearchQuery}
+                              onChange={(e) => setMemberSearchQuery(e.target.value)}
+                              className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 text-xs flex-1">
+                          {filteredMembers.length === 0 ? (
+                            <div className="p-3 text-center text-slate-400 text-xs">
+                              No members match "{memberSearchQuery}". You can keep typing custom donor name.
+                            </div>
+                          ) : (
+                            filteredMembers.map((m) => (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => handleSelectMember(m)}
+                                className="w-full text-left px-3 py-2 hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40 flex items-center justify-between transition-colors group"
+                              >
+                                <div>
+                                  <div className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600">
+                                    {m.name}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                    {m.phone && <span>📞 {m.phone}</span>}
+                                    {(m.address || m.division) && <span>📍 {m.address || m.division}</span>}
+                                  </div>
+                                </div>
+                                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200/50 dark:border-emerald-800/50">
+                                  Select
+                                </span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+
+                        <div className="p-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400">Can't find? Type any name above.</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowMemberDropdown(false)}
+                            className="text-emerald-600 font-semibold hover:underline"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

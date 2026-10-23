@@ -127,3 +127,56 @@ export const openWhatsAppFoodReminder = (duty) => {
   window.open(url, '_blank');
 };
 
+/**
+ * Generates a WhatsApp share URL and prefilled payment receipt message for an income / member payment.
+ */
+export const openWhatsAppPaymentReceipt = (item, balanceText = '') => {
+  const phone = item.donorPhone || item.member?.phone;
+  let cleanPhone = phone ? phone.replace(/[^0-9]/g, '') : '';
+  if (cleanPhone.length === 10) {
+    cleanPhone = `91${cleanPhone}`;
+  }
+
+  // Format date as DD/MM/YYYY
+  let dateStr = '-';
+  if (item.date) {
+    const d = new Date(item.date);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      dateStr = `${day}/${month}/${year}`;
+    }
+  }
+
+  const amountStr = Number(item.amount || 0).toLocaleString('en-IN');
+  const receiptNo = item.receiptNo || `RCP-INC-${item.id}`;
+  const donorName = item.donorName || item.member?.name || 'Respected Member';
+
+  let message = `*Assalamu Alaikum wa Rahmatullahi wa Barakatuhu, ${donorName}* 🕌\n\n`;
+  message += `Thank you for your payment to *Masjid al noor (sirajul huda sangam chulliyode)*.\n\n`;
+  message += `🧾 *OFFICIAL PAYMENT RECEIPT*\n`;
+  message += `━━━━━━━━━━━━━━━━━━━━\n`;
+  message += `📄 *Receipt No:* ${receiptNo}\n`;
+  message += `📅 *Date:* ${dateStr}\n`;
+  message += `👤 *Received From:* ${donorName}\n`;
+  message += `🏷️ *Category:* ${item.category || 'Member Payment'}\n`;
+  message += `💳 *Payment Mode:* ${item.paymentMode || 'Cash'}\n`;
+  message += `💵 *Amount Received:* *₹${amountStr}*\n`;
+  if (item.description) {
+    message += `📝 *Particulars:* ${item.description}\n`;
+  }
+  if (balanceText) {
+    message += `⚖️ *Remaining Balance / Due:* ${balanceText}\n`;
+  } else {
+    message += `✅ *Status:* Recorded successfully\n`;
+  }
+  message += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+  message += `May Allah (SWT) accept your contributions, reward you abundantly, and grant barakah to you and your family in this life and the hereafter. 🤲\n\n`;
+  message += `_Masjid al noor — sirajul huda sangam chulliyode_`;
+
+  const encoded = encodeURIComponent(message);
+  const url = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
+  window.open(url, '_blank');
+};
+

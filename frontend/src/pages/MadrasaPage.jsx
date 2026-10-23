@@ -31,6 +31,7 @@ import { api } from '../utils/api';
 import DivisionDropdown from '../components/DivisionDropdown';
 import { exportToPdf } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import { PAYMENT_MODES } from '../utils/categoriesData';
 import { openWhatsAppMadrasaDueReminder } from '../utils/whatsapp';
 import { useToast } from '../context/ToastContext';
@@ -805,7 +806,7 @@ export default function MadrasaPage() {
                       </span>
                       {s.endDate && (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
-                          Discontinued: {new Date(s.endDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                          Discontinued: {formatDateDDMMYYYY(s.endDate)}
                         </span>
                       )}
                     </div>
@@ -995,17 +996,17 @@ export default function MadrasaPage() {
                           </span>
                           {s.endDate && (
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
-                              Discontinued: {new Date(s.endDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                              Discontinued: {formatDateDDMMYYYY(s.endDate)}
                             </span>
                           )}
                         </div>
                         <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
                           {phone && <span>📞 {phone}</span>}
                           {s.admissionDate && (
-                            <span>• Joined: {new Date(s.admissionDate).toLocaleDateString('en-GB')}</span>
+                            <span>• Joined: {formatDateDDMMYYYY(s.admissionDate)}</span>
                           )}
                           {s.endDate && (
-                            <span className="text-amber-600 dark:text-amber-400 font-semibold">• Left: {new Date(s.endDate).toLocaleDateString('en-GB')}</span>
+                            <span className="text-amber-600 dark:text-amber-400 font-semibold">• Left: {formatDateDDMMYYYY(s.endDate)}</span>
                           )}
                         </div>
                       </td>
@@ -1735,7 +1736,7 @@ export default function MadrasaPage() {
                         )}
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                        {g.paymentMode} • {new Date(g.paymentDate).toLocaleDateString('en-GB')}
+                        {g.paymentMode} • {formatDateDDMMYYYY(g.paymentDate)}
                         {g.receiptNo && <span className="ml-1.5 font-mono text-[10px] text-slate-400">({g.receiptNo})</span>}
                       </div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
@@ -1799,9 +1800,9 @@ export default function MadrasaPage() {
                 </h3>
                 <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-emerald-600">{detailStudent.studentsCount || 1} Student(s)</span>
-                  <span>• Admitted / Joined: {new Date(detailStudent.admissionDate).toLocaleDateString('en-GB')}</span>
+                  <span>• Admitted / Joined: {formatDateDDMMYYYY(detailStudent.admissionDate)}</span>
                   {detailStudent.endDate && (
-                    <span className="text-amber-600 dark:text-amber-400 font-semibold">• Discontinued / Left: {new Date(detailStudent.endDate).toLocaleDateString('en-GB')}</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-semibold">• Discontinued / Left: {formatDateDDMMYYYY(detailStudent.endDate)}</span>
                   )}
                 </div>
               </div>

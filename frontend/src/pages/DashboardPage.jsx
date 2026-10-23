@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import StatCard from '../components/StatCard';
 import {
   TrendingUp,
@@ -92,7 +93,7 @@ export default function DashboardPage({ onNavigate }) {
           particulars = particulars.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() || particulars;
         }
         return [
-          new Date(entry.date).toLocaleDateString('en-GB'),
+          formatDateDDMMYYYY(entry.date),
           particulars,
           entry.category || '-',
           entry.paymentMode || 'Cash',
@@ -421,7 +422,7 @@ export default function DashboardPage({ onNavigate }) {
                         {inc.category}
                       </span>
                       <span>•</span>
-                      <span>{new Date(inc.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
+                      <span>{formatDateDDMMYYYY(inc.date)}</span>
                       <span>•</span>
                       <span>{inc.paymentMode}</span>
                     </div>
@@ -471,7 +472,7 @@ export default function DashboardPage({ onNavigate }) {
                       <span>•</span>
                       <span>Paid to: {exp.paidTo}</span>
                       <span>•</span>
-                      <span>{new Date(exp.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
+                      <span>{formatDateDDMMYYYY(exp.date)}</span>
                     </div>
                   </div>
                   <div className="text-sm font-bold text-rose-600 dark:text-rose-400">

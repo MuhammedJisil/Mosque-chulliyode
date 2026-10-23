@@ -4,6 +4,7 @@ import { STAFF_CATEGORIES, PAYMENT_MODES, MONTH_NAMES } from '../utils/categorie
 import { useToast } from '../context/ToastContext';
 import { exportToPdf } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import {
   Plus,
   Search,
@@ -289,7 +290,7 @@ export default function StaffPage() {
       'Role / Category': s.category,
       'Monthly Salary (INR)': s.salary,
       'Status': s.status,
-      'Joining Date': new Date(s.joiningDate).toLocaleDateString('en-GB'),
+      'Joining Date': formatDateDDMMYYYY(s.joiningDate),
       'Pending Months Count': s.pendingMonthsCount,
       'Pending Months Detail': s.pendingMonthsNames || '',
       'Total Pending Salary (INR)': s.totalPendingSalary,
@@ -1022,7 +1023,7 @@ export default function StaffPage() {
                           )}
                         </div>
                         <div className="text-[11px] text-slate-400 mt-0.5">
-                          {p.paymentMode} • {new Date(p.paymentDate).toLocaleDateString('en-GB')}
+                          {p.paymentMode} • {formatDateDDMMYYYY(p.paymentDate)}
                           {p.receiptNo && ` • ${p.receiptNo}`}
                         </div>
                         {p.notes && (
@@ -1084,7 +1085,7 @@ export default function StaffPage() {
                 <div className="font-bold text-sm text-slate-900 dark:text-white">{detailStaff.name}</div>
                 <div className="text-emerald-700 dark:text-emerald-300 font-semibold">{detailStaff.category}</div>
                 <div className="text-slate-500 mt-1">📞 {detailStaff.phone}</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Joined: {new Date(detailStaff.joiningDate).toLocaleDateString('en-GB')}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Joined: {formatDateDDMMYYYY(detailStaff.joiningDate)}</div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
