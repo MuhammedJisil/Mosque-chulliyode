@@ -105,10 +105,6 @@ export default function MadrasaPage() {
     notes: '',
   });
 
-  // Advance Month Adder State in Payment Modal
-  const [customAdvanceMonth, setCustomAdvanceMonth] = useState(currentMonth);
-  const [customAdvanceYear, setCustomAdvanceYear] = useState(currentYear);
-
   // Debounced search handling
   const timerRef = useRef(null);
   const handleSearchChange = (e) => {
@@ -326,23 +322,83 @@ export default function MadrasaPage() {
     }
   };
 
-  // Open Payment Modal
+  // Helper: Computes the covered months for a given payment amount in Madrasa
+  // 1. First takes pending due months up to calculatedCount
+  // 2. If entered amount is more than due months (or student has 0 dues), automatically adds consecutive future/advance months!
+  const computeCoveredMonths = (student, amount) => {
+    if (!student) return [];
+    const rate = student.monthlyFee || 200;
+    if (rate <= 0) return [];
+    const calculatedCount = Math.floor(amount / rate);
+    if (calculatedCount <= 0) return [];
+
+    const dueMonths = student.dueMonths || [];
+    const selected = [];
+
+    // 1. Take past due months first
+    const duesToTake = Math.min(calculatedCount, dueMonths.length);
+    for (let i = 0; i < duesToTake; i++) {
+      selected.push(dueMonths[i]);
+    }
+
+    // 2. Add extra future months consecutively
+    const extraCount = calculatedCount - duesToTake;
+    if (extraCount > 0) {
+      let lastM, lastY;
+      if (selected.length > 0) {
+        lastM = selected[selected.length - 1].month;
+        lastY = selected[selected.length - 1].year;
+      } else {
+        // Find after latest payment or current month
+        const sortedPayments = student.payments && student.payments.length > 0
+          ? [...student.payments].filter(p => p.month > 0).sort((a, b) => (b.year - a.year) || (b.month - a.month))
+          : [];
+        if (sortedPayments.length > 0) {
+          lastM = sortedPayments[0].month;
+          lastY = sortedPayments[0].year;
+        } else {
+          lastM = currentMonth - 1;
+          lastY = currentYear;
+          if (lastM === 0) {
+            lastM = 12;
+            lastY -= 1;
+          }
+        }
+      }
+
+      for (let i = 0; i < extraCount; i++) {
+        lastM += 1;
+        if (lastM > 12) {
+          lastM = 1;
+          lastY += 1;
+        }
+        selected.push({
+          month: lastM,
+          year: lastY,
+          label: `${MONTH_NAMES[lastM - 1]} ${lastY} (Advance)`
+        });
+      }
+    }
+
+    return selected;
+  };
+
+  // Open Payment Modal (Supports both past dues & automatic future/advance payments)
   const handleOpenPayment = (s) => {
     setActivePayingStudent(s);
+    const rate = s.monthlyFee || 200;
     let initialDue = [];
+
     if (s.dueMonths && s.dueMonths.length > 0) {
-      initialDue = [s.dueMonths[0]];
+      initialDue = [...s.dueMonths];
     } else {
-      initialDue = [{
-        month: currentMonth,
-        year: currentYear,
-        label: `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`
-      }];
+      initialDue = computeCoveredMonths(s, rate);
     }
 
     setSelectedPaymentMonths(initialDue);
     const initialMonthsCount = initialDue.length;
-    const initialFee = initialMonthsCount * (s.monthlyFee || 200);
+    const initialFee = initialMonthsCount * rate;
+    const labels = initialDue.map(d => d.label).join(', ');
 
     setPaymentForm({
       paymentDate: new Date().toISOString().split('T')[0],
@@ -351,50 +407,9 @@ export default function MadrasaPage() {
       feeAmount: initialFee,
       openingBalanceAmount: 0,
       paymentMode: 'Cash in Hand',
-      notes: initialDue[0] ? `Madrasa fee paid for ${initialDue[0].label}` : `Opening balance fee payment`,
+      notes: initialDue.length > 0 ? `Madrasa fee paid for ${labels}` : `Opening balance fee payment`,
     });
-    setCustomAdvanceMonth(initialDue[0] ? initialDue[0].month : currentMonth);
-    setCustomAdvanceYear(initialDue[0] ? initialDue[0].year : currentYear);
     setShowPaymentModal(true);
-  };
-
-  // Add advance month
-  const handleAddCustomAdvanceMonth = () => {
-    if (!activePayingStudent) return;
-    const mNum = parseInt(customAdvanceMonth);
-    const yNum = parseInt(customAdvanceYear);
-    const isAlreadySelected = selectedPaymentMonths.some(d => d.month === mNum && d.year === yNum);
-    if (isAlreadySelected) {
-      toast.info(`${MONTH_NAMES[mNum - 1]} ${yNum} is already selected.`);
-      return;
-    }
-    const alreadyPaid = (activePayingStudent.payments || []).some(p => p.month === mNum && p.year === yNum);
-    if (alreadyPaid) {
-      toast.error(`Already paid for ${MONTH_NAMES[mNum - 1]} ${yNum}.`);
-      return;
-    }
-
-    const newMonthItem = {
-      month: mNum,
-      year: yNum,
-      label: `${MONTH_NAMES[mNum - 1]} ${yNum} (Advance)`
-    };
-
-    const nextSelected = [...selectedPaymentMonths, newMonthItem];
-    setSelectedPaymentMonths(nextSelected);
-
-    const count = nextSelected.length;
-    const rate = activePayingStudent.monthlyFee || 200;
-    const newFee = count * rate;
-    const labels = nextSelected.map(d => d.label).join(', ');
-
-    setPaymentForm(prev => ({
-      ...prev,
-      feeAmount: newFee,
-      notes: `Madrasa fee paid for ${labels}`,
-    }));
-
-    toast.success(`Added ${MONTH_NAMES[mNum - 1]} ${yNum} to payment!`);
   };
 
   // Toggle selection of pending due months
@@ -423,6 +438,7 @@ export default function MadrasaPage() {
     }));
   };
 
+  // Bidirectional: When user edits fee amount (e.g. types 200, 400, 600 - auto-advances future months)
   const handleFeeAmountChange = (val) => {
     const amount = parseFloat(val) || 0;
     if (!activePayingStudent) {
@@ -430,24 +446,17 @@ export default function MadrasaPage() {
       return;
     }
 
-    const rate = activePayingStudent.monthlyFee || 200;
-    const calculatedCount = Math.floor(amount / rate);
+    const selected = computeCoveredMonths(activePayingStudent, amount);
+    setSelectedPaymentMonths(selected);
+    const labels = selected.map(d => d.label).join(', ');
 
-    if (activePayingStudent.dueMonths && activePayingStudent.dueMonths.length > 0 && calculatedCount > 0) {
-      const selected = activePayingStudent.dueMonths.slice(0, calculatedCount);
-      setSelectedPaymentMonths(selected);
-      const labels = selected.map(d => d.label).join(', ');
-
-      setPaymentForm(prev => ({
-        ...prev,
-        feeAmount: val,
-        month: selected[0] ? selected[0].month : prev.month,
-        year: selected[0] ? selected[0].year : prev.year,
-        notes: `Madrasa fee paid for ${labels}`,
-      }));
-    } else {
-      setPaymentForm(prev => ({ ...prev, feeAmount: val }));
-    }
+    setPaymentForm(prev => ({
+      ...prev,
+      feeAmount: val,
+      month: selected[0] ? selected[0].month : prev.month,
+      year: selected[0] ? selected[0].year : prev.year,
+      notes: selected.length > 0 ? `Madrasa fee paid for ${labels}` : prev.notes,
+    }));
   };
 
   const handleRecordPayment = async (e) => {
@@ -1532,38 +1541,51 @@ export default function MadrasaPage() {
                   </div>
                 )}
 
-                {/* Add Custom / Advance Month */}
-                <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-                    Advance / Future Month Payment:
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={customAdvanceMonth}
-                      onChange={(e) => setCustomAdvanceMonth(parseInt(e.target.value))}
-                      className="flex-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none"
-                    >
-                      {MONTH_NAMES.map((m, i) => (
-                        <option key={i + 1} value={i + 1}>{m}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={customAdvanceYear}
-                      onChange={(e) => setCustomAdvanceYear(parseInt(e.target.value))}
-                      className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none"
-                    >
-                      {[currentYear, currentYear + 1, currentYear + 2].map(y => (
-                        <option key={y} value={y}>{y}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleAddCustomAdvanceMonth}
-                      className="px-3 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors whitespace-nowrap"
-                    >
-                      + Add Month
-                    </button>
+                {(!activePayingStudent.dueMonths || activePayingStudent.dueMonths.length === 0) && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 rounded-xl border border-emerald-200 dark:border-emerald-800/40 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>All past madrasa fees are cleared! Advance payments for upcoming months or future years will be allocated automatically based on amount entered.</span>
                   </div>
+                )}
+
+                {/* Automatically Allocated Months Breakdown */}
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Allocated Months ({selectedPaymentMonths.length})</span>
+                    </span>
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                      Automatically calculated
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Entering an amount greater than dues automatically adds future months consecutively.
+                  </p>
+
+                  {selectedPaymentMonths.length > 0 ? (
+                    <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                      {selectedPaymentMonths.map((mItem, idx) => {
+                        const isAdvance = mItem.label && mItem.label.includes('Advance');
+                        return (
+                          <span
+                            key={idx}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold ${
+                              isAdvance
+                                ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800'
+                                : 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'
+                            }`}
+                          >
+                            <span>{mItem.label || `${MONTH_NAMES[mItem.month - 1]} ${mItem.year}`}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-amber-600 dark:text-amber-400 italic">
+                      Enter fee amount to allocate payment for months.
+                    </div>
+                  )}
                 </div>
 
                 {/* Fee Amount */}

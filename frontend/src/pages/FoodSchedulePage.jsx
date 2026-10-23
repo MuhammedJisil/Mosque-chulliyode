@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { api } from '../utils/api';
 import { openWhatsAppFoodReminder } from '../utils/whatsapp';
 import { exportToPdf } from '../utils/exportPdf';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import Pagination from '../components/Pagination';
 import DivisionDropdown from '../components/DivisionDropdown';
 import { useToast } from '../context/ToastContext';
@@ -1624,10 +1625,10 @@ export default function FoodSchedulePage() {
                         rosterMembers.map((m, idx) => {
                           const d = new Date(generateStartDate);
                           d.setDate(d.getDate() + idx);
-                          const dayString = d.toLocaleDateString('en-US', {
+                          const dayString = d.toLocaleDateString('en-GB', {
                             weekday: 'short',
-                            month: 'short',
-                            day: 'numeric'
+                            day: 'numeric',
+                            month: 'short'
                           });
 
                           return (
@@ -1722,12 +1723,12 @@ export default function FoodSchedulePage() {
                 <div className="text-xs text-slate-500 dark:text-slate-400">
                   {rosterMembers.length > 0 ? (
                     <span>
-                      Schedule: <b>{new Date(generateStartDate).toLocaleDateString()}</b> to{' '}
+                      Schedule: <b>{formatDateDDMMYYYY(generateStartDate)}</b> to{' '}
                       <b>
                         {(() => {
                           const end = new Date(generateStartDate);
                           end.setDate(end.getDate() + rosterMembers.length - 1);
-                          return end.toLocaleDateString();
+                          return formatDateDDMMYYYY(end);
                         })()}
                       </b>{' '}
                       ({rosterMembers.length} consecutive days)
