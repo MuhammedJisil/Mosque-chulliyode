@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../utils/api';
 import CategoryDropdown from '../components/CategoryDropdown';
 import CustomFieldInput from '../components/CustomFieldInput';
@@ -22,6 +22,7 @@ import {
   FileText,
   X,
   Check,
+  ChevronDown,
   Image as ImageIcon,
   FileDown
 } from 'lucide-react';
@@ -53,6 +54,12 @@ export default function ExpensePage() {
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
 
+  // Member link / recipient dropdown state
+  const [membersList, setMembersList] = useState([]);
+  const [showMemberDropdown, setShowMemberDropdown] = useState(false);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const memberDropdownRef = useRef(null);
+
   // Form State
   const initialFormState = {
     purpose: '',
@@ -64,6 +71,7 @@ export default function ExpensePage() {
     customFields: [],
     proofImage: null,
     date: new Date().toISOString().split('T')[0],
+    memberId: null,
   };
   const [formData, setFormData] = useState(initialFormState);
   const [submitting, setSubmitting] = useState(false);
@@ -101,6 +109,71 @@ export default function ExpensePage() {
     }
   };
 
+  // Fetch Mahallu Members for recipient selection
+  useEffect(() => {
+    const fetchMembers = async () => {
+      try {
+        const res = await api.get('/api/members');
+        if (res.success && res.members) {
+          setMembersList(res.members);
+        }
+      } catch (err) {
+        console.error('Failed to load members for expense recipient dropdown:', err);
+      }
+    };
+    fetchMembers();
+  }, []);
+
+  // Close member dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (memberDropdownRef.current && !memberDropdownRef.current.contains(e.target)) {
+        setShowMemberDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filter members for recipient dropdown
+  const filteredMembers = useMemo(() => {
+    if (!memberSearchQuery.trim()) return membersList.slice(0, 35);
+    const q = memberSearchQuery.toLowerCase().trim();
+    return membersList.filter(m =>
+      (m.name && m.name.toLowerCase().includes(q)) ||
+      (m.phone && m.phone.toLowerCase().includes(q)) ||
+      (m.division && m.division.toLowerCase().includes(q)) ||
+      (m.idNumber && String(m.idNumber).toLowerCase().includes(q))
+    ).slice(0, 35);
+  }, [membersList, memberSearchQuery]);
+
+  const handleSelectMember = (member) => {
+    setFormData(prev => ({
+      ...prev,
+      paidTo: member.name,
+      memberId: member.id,
+    }));
+    setShowMemberDropdown(false);
+    setMemberSearchQuery('');
+    toast.success(`Selected recipient: ${member.name} ${member.idNumber ? `(#${member.idNumber})` : ''}`);
+  };
+
+  const getMemberInfo = (item) => {
+    if (!item) return null;
+    return membersList.find(m =>
+      (item.memberId && m.id === item.memberId) ||
+      (item.paidTo && m.name && m.name.toLowerCase().trim() === item.paidTo.toLowerCase().trim())
+    );
+  };
+
+  const handleDownloadVoucher = (item) => {
+    const m = getMemberInfo(item);
+    exportSingleExpenseVoucherPdf({
+      ...item,
+      paidToIdNumber: m?.idNumber || null,
+    });
+  };
+
   useEffect(() => {
     fetchCustomCategories();
   }, []);
@@ -112,6 +185,7 @@ export default function ExpensePage() {
   const handleOpenAdd = () => {
     setEditingItem(null);
     setFormData(initialFormState);
+    setShowMemberDropdown(false);
     setShowAddModal(true);
   };
 
@@ -127,7 +201,9 @@ export default function ExpensePage() {
       customFields: item.customFields || [],
       proofImage: item.proofImage || null,
       date: item.date ? new Date(item.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      memberId: item.memberId || null,
     });
+    setShowMemberDropdown(false);
     setShowAddModal(true);
   };
 
@@ -167,23 +243,28 @@ export default function ExpensePage() {
     }
   };
 
-  // Export to PDF
-  const handleExportPdf = ({ scope, month, year, periodLabel }) => {
+  // Export to PDF with orientation and sequential numbering
+  const handleExportPdf = ({ scope, month, year, periodLabel, orientation = 'landscape' }) => {
     const dataToExport = expenses.filter(exp => {
       if (scope === 'all') return true;
       const d = new Date(exp.date);
       return (d.getMonth() + 1 === month) && (d.getFullYear() === year);
     });
 
-    const columns = ['Date', 'Purpose / Item', 'Paid To / Vendor', 'Category', 'Payment Mode', 'Amount (Rs.)'];
-    const rows = dataToExport.map(item => [
-      formatDateDDMMYYYY(item.date),
-      item.purpose || '-',
-      item.paidTo || '-',
-      item.category || '-',
-      item.paymentMode || 'Cash',
-      'Rs. ' + Number(item.amount).toLocaleString('en-IN')
-    ]);
+    const columns = ['#', 'Date', 'Paid To / Vendor', 'Member ID', 'Category', 'Purpose / Item', 'Payment Mode', 'Amount (₹)'];
+    const rows = dataToExport.map((item, idx) => {
+      const m = getMemberInfo(item);
+      return [
+        idx + 1,
+        formatDateDDMMYYYY(item.date),
+        item.paidTo || '-',
+        m?.idNumber ? `#${m.idNumber}` : '-',
+        item.category || '-',
+        item.purpose || '-',
+        item.paymentMode || 'Cash',
+        '₹' + Number(item.amount).toLocaleString('en-IN')
+      ];
+    });
 
     const total = dataToExport.reduce((acc, c) => acc + c.amount, 0);
 
@@ -193,8 +274,10 @@ export default function ExpensePage() {
       dateRange: periodLabel,
       columns,
       rows,
+      orientation,
+      includeSlNo: false,
       summaryRows: [
-        { label: 'Total Expenditures:', value: 'Rs. ' + Number(total).toLocaleString('en-IN'), bold: true, highlight: true }
+        { label: 'Total Expenditures:', value: '₹' + Number(total).toLocaleString('en-IN'), bold: true, highlight: true }
       ],
       fileName: `Masjid_Al_Noor_Expense_${periodLabel.replace(/\s+/g, '_')}.pdf`
     });
@@ -382,8 +465,13 @@ export default function ExpensePage() {
                     <div className="font-bold text-sm text-slate-900 dark:text-white">
                       {item.purpose}
                     </div>
-                    <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                    <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <span>Paid to: <strong className="text-slate-600 dark:text-slate-300">{item.paidTo}</strong></span>
+                      {getMemberInfo(item)?.idNumber && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60">
+                          #{getMemberInfo(item).idNumber}
+                        </span>
+                      )}
                       <span>•</span>
                       <span>{formatDateDDMMYYYY(item.date)}</span>
                     </div>
@@ -402,7 +490,7 @@ export default function ExpensePage() {
                     )}
                     <button
                       type="button"
-                      onClick={() => exportSingleExpenseVoucherPdf(item)}
+                      onClick={() => handleDownloadVoucher(item)}
                       className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                       title="Download Payment Voucher (PDF)"
                     >
@@ -492,8 +580,13 @@ export default function ExpensePage() {
                       <div className="font-semibold text-slate-900 dark:text-white">
                         {item.purpose}
                       </div>
-                      <div className="text-[11px] text-slate-400">
-                        Paid to: <span className="font-medium text-slate-600 dark:text-slate-300">{item.paidTo}</span>
+                      <div className="text-[11px] text-slate-400 flex items-center gap-1.5 flex-wrap">
+                        <span>Paid to: <span className="font-medium text-slate-600 dark:text-slate-300">{item.paidTo}</span></span>
+                        {getMemberInfo(item)?.idNumber && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60">
+                            #{getMemberInfo(item).idNumber}
+                          </span>
+                        )}
                       </div>
                       {item.description && (
                         <div className="text-[10px] text-slate-400 mt-0.5 italic truncate max-w-xs">
@@ -539,7 +632,7 @@ export default function ExpensePage() {
                       <div className="inline-flex items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => exportSingleExpenseVoucherPdf(item)}
+                          onClick={() => handleDownloadVoucher(item)}
                           className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
                           title="Download Payment Voucher (PDF)"
                         >
@@ -632,7 +725,14 @@ export default function ExpensePage() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400 uppercase font-semibold text-[10px]">Paid To</span>
-                  <span className="font-semibold text-slate-700 dark:text-slate-200">👤 {viewingItem.paidTo}</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                    <span>👤 {viewingItem.paidTo}</span>
+                    {getMemberInfo(viewingItem)?.idNumber && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60">
+                        #{getMemberInfo(viewingItem).idNumber}
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400 uppercase font-semibold text-[10px]">Expense Date</span>
@@ -783,18 +883,110 @@ export default function ExpensePage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Paid To */}
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                      Paid To (Vendor / Person) <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Electric Board or Hardware Store"
-                      value={formData.paidTo}
-                      onChange={(e) => setFormData({ ...formData, paidTo: e.target.value })}
-                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-rose-500 focus:outline-none"
-                    />
+                  <div className="relative" ref={memberDropdownRef}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300">
+                        Paid To (Vendor / Person) <span className="text-rose-500">*</span>
+                      </label>
+                      {membersList.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowMemberDropdown(prev => !prev)}
+                          className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-1"
+                        >
+                          <span>Select Member ({membersList.length})</span>
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Type name or select member..."
+                        value={formData.paidTo}
+                        onChange={(e) => {
+                          setFormData({ ...formData, paidTo: e.target.value });
+                          setMemberSearchQuery(e.target.value);
+                          if (!showMemberDropdown) setShowMemberDropdown(true);
+                        }}
+                        onFocus={() => setShowMemberDropdown(true)}
+                        className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-rose-500 focus:outline-none pr-8"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowMemberDropdown(prev => !prev)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                        title="Toggle Member List"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Member Dropdown Combobox Menu */}
+                    {showMemberDropdown && (
+                      <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden max-h-64 flex flex-col">
+                        <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Search member by name, phone, area..."
+                              value={memberSearchQuery}
+                              onChange={(e) => setMemberSearchQuery(e.target.value)}
+                              className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-rose-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 text-xs flex-1">
+                          {filteredMembers.length === 0 ? (
+                            <div className="p-3 text-center text-slate-400 text-xs">
+                              No members match "{memberSearchQuery}". You can keep typing custom recipient/vendor.
+                            </div>
+                          ) : (
+                            filteredMembers.map((m) => (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => handleSelectMember(m)}
+                                className="w-full text-left px-3 py-2 hover:bg-rose-50/70 dark:hover:bg-rose-950/40 flex items-center justify-between transition-colors group"
+                              >
+                                <div>
+                                  <div className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-rose-600 flex items-center gap-1.5">
+                                    <span>{m.name}</span>
+                                    {m.idNumber && (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60">
+                                        #{m.idNumber}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                    {m.phone && <span>📞 {m.phone}</span>}
+                                    {(m.address || m.division) && <span>📍 {m.address || m.division}</span>}
+                                  </div>
+                                </div>
+                                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-full border border-rose-200/50 dark:border-rose-800/50">
+                                  Select
+                                </span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+
+                        <div className="p-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400">Can't find? Type any vendor name above.</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowMemberDropdown(false)}
+                            className="text-rose-600 font-semibold hover:underline"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                 {/* Amount */}

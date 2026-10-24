@@ -13,6 +13,7 @@ export default function ExportModal({
   const [exportScope, setExportScope] = useState('all'); // 'all' or 'month'
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [pdfOrientation, setPdfOrientation] = useState('landscape');
 
   if (!isOpen) return null;
 
@@ -24,6 +25,7 @@ export default function ExportModal({
       month: exportScope === 'month' ? selectedMonth : null,
       year: exportScope === 'month' ? selectedYear : null,
       periodLabel: exportScope === 'month' ? `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}` : 'All Records',
+      orientation: pdfOrientation,
     };
 
     if (format === 'pdf' && onExportPdf) {
@@ -119,7 +121,37 @@ export default function ExportModal({
             </div>
           )}
 
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+            <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
+              PDF Page Orientation
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setPdfOrientation('portrait')}
+                className={`py-2 px-3 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 transition-all ${
+                  pdfOrientation === 'portrait'
+                    ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                <span>📄 Portrait</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPdfOrientation('landscape')}
+                className={`py-2 px-3 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 transition-all ${
+                  pdfOrientation === 'landscape'
+                    ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                <span>📃 Landscape</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
             <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 mb-3">
               Choose Download Format
             </label>

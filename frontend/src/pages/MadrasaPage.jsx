@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { api } from '../utils/api';
 import DivisionDropdown from '../components/DivisionDropdown';
+import PdfOrientationModal from '../components/PdfOrientationModal';
 import { exportToPdf } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
@@ -65,6 +66,7 @@ export default function MadrasaPage() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailStudent, setDetailStudent] = useState(null);
   const [detailYear, setDetailYear] = useState(new Date().getFullYear());
+  const [showPdfModal, setShowPdfModal] = useState(false);
 
   // Search inside Add/Edit modal for Mahallu Member
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
@@ -567,10 +569,10 @@ export default function MadrasaPage() {
     setShowDetailModal(true);
   };
 
-  // Export PDF
-  const handleExportPdf = () => {
-    const columns = ['Parent / Member', 'Phone', 'Area / Division', 'Job', 'Students Count', 'Monthly Fee', 'Opening Balance', 'Due Months', 'Total Due (₹)'];
-    const rows = displayedStudents.map(s => {
+  // Export PDF with orientation and numbering
+  const handleExportPdf = (orientation = 'landscape') => {
+    const columns = ['#', 'Parent / Member', 'Phone', 'Area / Division', 'Job', 'Students Count', 'Monthly Fee', 'Opening Balance', 'Due Months', 'Total Due (₹)'];
+    const rows = displayedStudents.map((s, idx) => {
       const parentName = s.parentName || s.member?.name || '-';
       const phone = s.parentPhone || s.member?.phone || '-';
       const division = s.division || s.member?.division || '-';
@@ -581,7 +583,7 @@ export default function MadrasaPage() {
       const dueMonths = s.dueMonthsCount > 0 ? `${s.dueMonthsCount} Mo (${s.dueMonthsNames || ''})` : 'Clear';
       const totalDue = '₹' + Number(s.totalDueAmount || 0).toLocaleString('en-IN');
 
-      return [parentName, phone, division, job, count, monthly, openBal, dueMonths, totalDue];
+      return [idx + 1, parentName, phone, division, job, count, monthly, openBal, dueMonths, totalDue];
     });
 
     const totalDues = displayedStudents.reduce((acc, s) => acc + (s.totalDueAmount || 0), 0);
@@ -593,6 +595,8 @@ export default function MadrasaPage() {
       dateRange: 'Current Status',
       columns,
       rows,
+      orientation,
+      includeSlNo: false,
       summaryRows: [
         { label: 'Total Opening Balance Due:', value: '₹' + Number(totalOpeningBalDue).toLocaleString('en-IN') },
         { label: 'Total Outstanding Madrasa Fees:', value: '₹' + Number(totalDues).toLocaleString('en-IN'), bold: true, highlight: true }
@@ -649,7 +653,7 @@ export default function MadrasaPage() {
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={handleExportPdf}
+            onClick={() => setShowPdfModal(true)}
             className="p-2 sm:px-3 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 shadow-xs flex items-center gap-1.5"
             title="Download PDF Report"
           >
@@ -2046,6 +2050,14 @@ export default function MadrasaPage() {
         </div>,
         document.body
       )}
+
+      <PdfOrientationModal
+        isOpen={showPdfModal}
+        onClose={() => setShowPdfModal(false)}
+        onSelect={handleExportPdf}
+        title="Download Madrasa Fee Due Report PDF"
+        recommended="landscape"
+      />
     </div>
   );
 }

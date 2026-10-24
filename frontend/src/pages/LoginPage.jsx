@@ -54,14 +54,14 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <img
             src="/app-icon.svg"
-            alt="جامعة النور"
+            alt="مسجد النور"
             className="w-20 h-20 rounded-3xl shadow-xl shadow-emerald-600/30 mb-4 mx-auto object-cover"
           />
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight" dir="rtl">
-            جامعة النور
+            مسجد النور
           </h1>
           <p className="mt-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400 tracking-widest uppercase">
-            Jamia Al Noor
+            Masjid Al Noor
           </p>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Authorized Admin Portal &amp; Management System

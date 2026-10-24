@@ -1,7 +1,7 @@
 {
-  "name": "جامعة النور - Jamia Al Noor",
-  "short_name": "جامعة النور",
-  "description": "جامعة النور (Jamia Al Noor) - Comprehensive Masjid Management System for Income, Expense, Member Subscriptions, and Staff Administration",
+  "name": "مسجد النور - Masjid Al Noor",
+  "short_name": "مسجد النور",
+  "description": "مسجد النور (Masjid Al Noor) - Comprehensive Masjid Management System for Income, Expense, Member Subscriptions, and Staff Administration",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

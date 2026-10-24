@@ -42,10 +42,13 @@ export const exportToPdf = async ({
   columns = [],
   rows = [],
   summaryRows = [],
-  fileName = 'masjid_al_noor_statement.pdf'
+  fileName = 'masjid_al_noor_statement.pdf',
+  orientation = 'portrait', // 'portrait' | 'landscape'
+  includeSlNo = true,
 }) => {
+  const finalOrientation = orientation === 'landscape' ? 'landscape' : 'portrait';
   const doc = new jsPDF({
-    orientation: 'portrait',
+    orientation: finalOrientation,
     unit: 'pt',
     format: 'a4'
   });
@@ -60,6 +63,23 @@ export const exportToPdf = async ({
   };
 
   const pageW = doc.internal.pageSize.width;
+  const pageH = doc.internal.pageSize.height;
+
+  // Auto-prepend sequential number column (#) if not present
+  let finalColumns = [...columns];
+  let finalRows = rows.map(r => [...r]);
+
+  const hasSlNo = finalColumns.length > 0 && (
+    finalColumns[0] === '#' ||
+    String(finalColumns[0]).toLowerCase() === 'sl. no.' ||
+    String(finalColumns[0]).toLowerCase() === 'sl no' ||
+    String(finalColumns[0]).toLowerCase() === 'no'
+  );
+
+  if (includeSlNo && !hasSlNo) {
+    finalColumns = ['#', ...finalColumns];
+    finalRows = finalRows.map((r, idx) => [idx + 1, ...r]);
+  }
 
   // ── Emerald Green Header Banner ─────────────────────────────────────────────
   doc.setFillColor(5, 150, 105);
@@ -89,45 +109,54 @@ export const exportToPdf = async ({
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
-  doc.text(`Generated On: ${printDate}`, 40, 105);
-  doc.text(`Period / Filter: ${dateRange}`, 40, 120);
+  doc.text(`Generated On: ${printDate}`, 30, 105);
+  doc.text(`Period / Filter: ${dateRange}`, 30, 120);
   if (subtitle) {
-    doc.text(safe(subtitle), pageW - 40, 105, { align: 'right' });
+    doc.text(safe(subtitle), pageW - 30, 105, { align: 'right' });
   }
 
   // ── Table ───────────────────────────────────────────────────────────────────
-  const safeRows = rows.map(row =>
+  const safeRows = finalRows.map(row =>
     row.map(cell => (typeof cell === 'string' ? safe(cell) : cell))
   );
 
+  const isWide = finalColumns.length > 7;
+  const tableFontSize = finalOrientation === 'portrait' ? (isWide ? 7 : 8) : (isWide ? 8 : 8.5);
+  const tableHeadFontSize = tableFontSize + 0.5;
+
   doc.autoTable({
     startY: 135,
-    head: [columns.map(c => safe(c))],
+    head: [finalColumns.map(c => safe(c))],
     body: safeRows,
     theme: 'grid',
+    styles: {
+      font: fontName,
+      fontSize: tableFontSize,
+      cellPadding: finalOrientation === 'portrait' && isWide ? 3 : 4,
+      overflow: 'linebreak',
+      textColor: [30, 41, 59]
+    },
     headStyles: {
       fillColor: [6, 78, 59],
       textColor: [255, 255, 255],
       font: fontName,
       fontStyle: 'bold',
-      fontSize: 9,
+      fontSize: tableHeadFontSize,
       halign: 'left'
     },
-    bodyStyles: {
-      font: fontName,
-      fontSize: 8.5,
-      textColor: [30, 41, 59]
+    columnStyles: {
+      0: { cellWidth: 26, halign: 'center' }
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252]
     },
-    margin: { left: 40, right: 40 },
+    margin: { left: 30, right: 30 },
     didDrawPage: () => {
       const str = `Page ${doc.internal.getNumberOfPages()}`;
       doc.setFont(fontName, 'normal');
       doc.setFontSize(8);
       doc.setTextColor(148, 163, 184);
-      doc.text(str, pageW / 2, doc.internal.pageSize.height - 20, { align: 'center' });
+      doc.text(str, pageW / 2, pageH - 18, { align: 'center' });
     }
   });
 
@@ -135,12 +164,12 @@ export const exportToPdf = async ({
   let finalY = doc.lastAutoTable.finalY + 18;
 
   if (summaryRows && summaryRows.length > 0) {
-    const boxW = 280;
-    const boxX = pageW - 40 - boxW;
+    const boxW = Math.min(280, pageW - 60);
+    const boxX = pageW - 30 - boxW;
     const rowH = 19;
     const boxH = (summaryRows.length * rowH) + 16;
 
-    if (finalY + boxH > doc.internal.pageSize.height - 70) {
+    if (finalY + boxH > pageH - 70) {
       doc.addPage();
       finalY = 40;
     }
@@ -167,7 +196,7 @@ export const exportToPdf = async ({
   }
 
   // ── Signatures ──────────────────────────────────────────────────────────────
-  if (finalY + 50 > doc.internal.pageSize.height - 40) {
+  if (finalY + 50 > pageH - 40) {
     doc.addPage();
     finalY = 60;
   }
@@ -175,10 +204,11 @@ export const exportToPdf = async ({
   doc.setFont(fontName, 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('_____________________________', 40, finalY + 30);
-  doc.text('Prepared By (Staff / Admin)', 40, finalY + 45);
-  doc.text('_____________________________', pageW - 180, finalY + 30);
-  doc.text('Approved By (President / Treasurer)', pageW - 180, finalY + 45);
+  doc.line(30, finalY + 30, 180, finalY + 30);
+  doc.text('Prepared By (Staff / Admin)', 30, finalY + 45);
+
+  doc.line(pageW - 200, finalY + 30, pageW - 30, finalY + 30);
+  doc.text('Approved By (President / Treasurer)', pageW - 200, finalY + 45);
 
   doc.save(fileName);
 };
@@ -187,29 +217,40 @@ export const exportToPdf = async ({
  * Dedicated Family Census / Survey PDF Export
  * Exports member name, division, job, family members (adults, children), and family notes/ages.
  */
-export const exportFamilySurveyPdf = ({
+export const exportFamilySurveyPdf = async ({
   members = [],
   division = 'All Divisions',
-  fileName = 'mahallu_family_survey_report.pdf'
+  fileName = 'mahallu_family_survey_report.pdf',
+  orientation = 'landscape'
 }) => {
+  const finalOrientation = orientation === 'portrait' ? 'portrait' : 'landscape';
   const doc = new jsPDF({
-    orientation: 'landscape',
+    orientation: finalOrientation,
     unit: 'pt',
     format: 'a4'
   });
 
+  const fontLoaded = await loadNotoSansFont(doc);
+  const fontName = fontLoaded ? 'NotoSans' : 'helvetica';
+
+  const safe = (str) => {
+    if (typeof str !== 'string') return str;
+    return fontLoaded ? str : str.replace(/₹/g, 'Rs. ');
+  };
+
   const pageW = doc.internal.pageSize.width;
+  const pageH = doc.internal.pageSize.height;
 
   // Header banner
   doc.setFillColor(5, 150, 105);
   doc.rect(0, 0, pageW, 75, 'F');
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(fontName, 'bold');
   doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
   doc.text('Masjid al noor', pageW / 2, 28, { align: 'center' });
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(fontName, 'normal');
   doc.setFontSize(10);
   doc.setTextColor(220, 252, 231);
   doc.text('sirajul huda sangam chulliyode', pageW / 2, 45, { align: 'center' });
@@ -225,15 +266,15 @@ export const exportFamilySurveyPdf = ({
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
-  doc.text(`Generated On: ${printDate}`, 40, 95);
-  doc.text(`Division / Area: ${division}`, 40, 108);
+  doc.text(`Generated On: ${printDate}`, 30, 95);
+  doc.text(`Division / Area: ${division}`, 30, 108);
 
   const totalMembers = members.length;
   const totalAdults = members.reduce((sum, m) => sum + (m.hasFamily ? (parseInt(m.adultsCount) || 0) : 0), 0);
   const totalChildren = members.reduce((sum, m) => sum + (m.hasFamily ? (parseInt(m.childrenCount) || 0) : 0), 0);
   const totalIndividuals = totalMembers + totalAdults + totalChildren;
 
-  doc.text(`Total Houses/Members: ${totalMembers}  |  Adults: ${totalAdults}  |  Children: ${totalChildren}  |  Total Population: ${totalIndividuals}`, pageW - 40, 95, { align: 'right' });
+  doc.text(`Total Houses: ${totalMembers} | Adults: ${totalAdults} | Children: ${totalChildren} | Population: ${totalIndividuals}`, pageW - 30, 95, { align: 'right' });
 
   const columns = [
     '#',
@@ -268,27 +309,26 @@ export const exportFamilySurveyPdf = ({
     head: [columns.map(c => safe(c))],
     body: safeRows,
     theme: 'grid',
+    styles: {
+      font: fontName,
+      fontSize: finalOrientation === 'portrait' ? 7 : 8,
+      cellPadding: finalOrientation === 'portrait' ? 3 : 4,
+      overflow: 'linebreak',
+      textColor: [30, 41, 59]
+    },
     headStyles: {
       fillColor: [6, 78, 59],
       textColor: [255, 255, 255],
+      font: fontName,
       fontStyle: 'bold',
-      fontSize: 8.5,
+      fontSize: finalOrientation === 'portrait' ? 7.5 : 8.5,
       halign: 'left'
     },
-    bodyStyles: {
-      fontSize: 8,
-      textColor: [30, 41, 59]
-    },
     columnStyles: {
-      0: { cellWidth: 25 },
-      1: { cellWidth: 45 },
-      2: { cellWidth: 120 },
-      3: { cellWidth: 75 },
-      4: { cellWidth: 80 },
-      5: { cellWidth: 80 },
-      6: { cellWidth: 40, halign: 'center' },
-      7: { cellWidth: 45, halign: 'center' },
-      8: { cellWidth: 'auto' }
+      0: { cellWidth: 24, halign: 'center' },
+      1: { cellWidth: 42 },
+      6: { cellWidth: 36, halign: 'center' },
+      7: { cellWidth: 38, halign: 'center' }
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252]
@@ -296,9 +336,10 @@ export const exportFamilySurveyPdf = ({
     margin: { left: 30, right: 30 },
     didDrawPage: () => {
       const str = `Page ${doc.internal.getNumberOfPages()}`;
+      doc.setFont(fontName, 'normal');
       doc.setFontSize(8);
       doc.setTextColor(148, 163, 184);
-      doc.text(str, pageW / 2, doc.internal.pageSize.height - 15, { align: 'center' });
+      doc.text(str, pageW / 2, pageH - 15, { align: 'center' });
     }
   });
 
@@ -306,7 +347,7 @@ export const exportFamilySurveyPdf = ({
 };
 
 /**
- * Generate official Single Income Receipt Bill (A5 Landscape)
+ * Generate official Single Income Bill Receipt (A5 Landscape)
  */
 export const exportSingleIncomeReceiptPdf = async (item) => {
   const doc = new jsPDF({
@@ -356,7 +397,7 @@ export const exportSingleIncomeReceiptPdf = async (item) => {
   doc.setFont(fontName, 'normal');
   doc.setFontSize(9);
   doc.setTextColor(220, 252, 231);
-  doc.text('sirajul huda sangam chulliyode • PIN: 673592', 35, 57);
+  doc.text('sirajul huda sangam chulliyode • PIN: 679332', 35, 57);
 
   // Receipt Badge on Right
   doc.setFillColor(255, 255, 255);
@@ -379,66 +420,75 @@ export const exportSingleIncomeReceiptPdf = async (item) => {
   doc.text(`Date: ${dateFormatted}`, pageW - 35, 96, { align: 'right' });
 
   // Details Grid
-  let curY = 126;
-  const drawRow = (label, value, y) => {
+  let curY = 124;
+  const drawRow = (label, value) => {
+    if (!value && value !== 0) return;
     doc.setFont(fontName, 'normal');
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
-    doc.text(label, 35, y);
+    doc.text(label, 35, curY);
 
     doc.setFont(fontName, 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(safe(value), 175, y);
+
+    const safeVal = safe(value);
+    const maxValW = pageW - 45 - 175; // ~375 pt
+    const lines = doc.splitTextToSize(safeVal, maxValW);
+    doc.text(lines, 175, curY);
+
+    const rowH = Math.max(lines.length * 13, 19);
+    curY += rowH + 3;
   };
 
-  drawRow('Received From (Donor):', item.donorName || 'General Donor', curY);
-  curY += 22;
+  const donorDisplayName = item.donorIdNumber
+    ? `${item.donorName || 'General Donor'} [ID: #${item.donorIdNumber}]`
+    : (item.donorName || 'General Donor');
+
+  drawRow('Received From (Donor):', donorDisplayName);
 
   if (item.donorPhone || item.donorAddress) {
-    const contactInfo = [item.donorPhone, item.donorAddress].filter(Boolean).join(' • ');
-    drawRow('Contact / Address:', contactInfo, curY);
-    curY += 22;
+    const contactParts = [item.donorPhone, item.donorAddress];
+    if (item.donorIdNumber && !item.donorName) {
+      contactParts.push(`Member ID: #${item.donorIdNumber}`);
+    }
+    const contactInfo = contactParts.filter(Boolean).join(' • ');
+    drawRow('Contact / Address:', contactInfo);
   }
 
-  drawRow('Income Category / Head:', item.category || 'General Donation', curY);
-  curY += 22;
-
-  drawRow('Payment Mode:', item.paymentMode || 'Cash', curY);
-  curY += 22;
+  drawRow('Income Category / Head:', item.category || 'General Donation');
+  drawRow('Payment Mode:', item.paymentMode || 'Cash');
 
   if (item.description) {
-    drawRow('Particulars / Remarks:', item.description, curY);
-    curY += 24;
-  } else {
-    curY += 6;
+    drawRow('Particulars / Remarks:', item.description);
   }
 
   // Amount Highlight Box
+  const boxY = Math.max(curY + 4, 236);
   doc.setFillColor(236, 253, 245);
   doc.setDrawColor(110, 231, 183);
   doc.setLineWidth(1.5);
-  doc.roundedRect(35, curY, pageW - 70, 46, 6, 6, 'FD');
+  doc.roundedRect(35, boxY, pageW - 70, 46, 6, 6, 'FD');
 
   doc.setFont(fontName, 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(4, 120, 87);
-  doc.text('AMOUNT RECEIVED:', 48, curY + 18);
+  doc.text('AMOUNT RECEIVED:', 48, boxY + 18);
 
   const amtFormatted = safe(`₹ ${Number(item.amount || 0).toLocaleString('en-IN')}`);
   doc.setFont(fontName, 'bold');
   doc.setFontSize(16);
   doc.setTextColor(5, 150, 105);
-  doc.text(amtFormatted, 48, curY + 38);
+  doc.text(amtFormatted, 48, boxY + 38);
 
   // Status Stamp inside Box
   doc.setFont(fontName, 'bold');
   doc.setFontSize(10);
   doc.setTextColor(4, 120, 87);
-  doc.text('PAID & ACKNOWLEDGED ✓', pageW - 48, curY + 28, { align: 'right' });
+  doc.text('PAID & ACKNOWLEDGED ✓', pageW - 48, boxY + 28, { align: 'right' });
 
   // Signature lines at bottom
-  const sigY = pageH - 55;
+  const sigY = pageH - 52;
   doc.setDrawColor(203, 213, 225);
   doc.setLineWidth(0.8);
   doc.line(35, sigY, 190, sigY);
@@ -453,7 +503,7 @@ export const exportSingleIncomeReceiptPdf = async (item) => {
   // Footer blessing
   doc.setFontSize(7.5);
   doc.setTextColor(148, 163, 184);
-  doc.text('May Allah accept this contribution and bless your family with barakah.', pageW / 2, pageH - 24, { align: 'center' });
+  doc.text('May Allah accept this contribution and bless your family with barakah.', pageW / 2, pageH - 18, { align: 'center' });
 
   const cleanName = (item.donorName || 'income').replace(/[^a-zA-Z0-9]/g, '_');
   doc.save(`Receipt_${receiptNo}_${cleanName}.pdf`);
@@ -497,7 +547,7 @@ export const exportSingleExpenseVoucherPdf = async (item) => {
   doc.setLineWidth(1);
   doc.roundedRect(20, 18, pageW - 40, pageH - 36, 6, 6, 'S');
 
-  // Header Banner (Rose / Slate themed for expense)
+  // Header Banner (Slate themed for expense)
   doc.setFillColor(15, 23, 42); // slate-900
   doc.roundedRect(21, 19, pageW - 42, 58, 5, 5, 'F');
 
@@ -509,7 +559,7 @@ export const exportSingleExpenseVoucherPdf = async (item) => {
   doc.setFont(fontName, 'normal');
   doc.setFontSize(9);
   doc.setTextColor(203, 213, 225);
-  doc.text('sirajul huda sangam chulliyode • Financial Administration', 35, 57);
+  doc.text('sirajul huda sangam chulliyode • PIN: 679332', 35, 57);
 
   // Voucher Badge on Right
   doc.setFillColor(225, 29, 72); // rose-600
@@ -532,65 +582,70 @@ export const exportSingleExpenseVoucherPdf = async (item) => {
   doc.text(`Date: ${dateFormatted}`, pageW - 35, 96, { align: 'right' });
 
   // Details Grid
-  let curY = 126;
-  const drawRow = (label, value, y) => {
+  let curY = 124;
+  const drawRow = (label, value) => {
+    if (!value && value !== 0) return;
     doc.setFont(fontName, 'normal');
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
-    doc.text(label, 35, y);
+    doc.text(label, 35, curY);
 
     doc.setFont(fontName, 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(safe(value), 175, y);
+
+    const safeVal = safe(value);
+    const maxValW = pageW - 45 - 175; // ~375 pt
+    const lines = doc.splitTextToSize(safeVal, maxValW);
+    doc.text(lines, 175, curY);
+
+    const rowH = Math.max(lines.length * 13, 19);
+    curY += rowH + 3;
   };
 
-  drawRow('Paid To (Recipient / Vendor):', item.paidTo || '-', curY);
-  curY += 22;
+  const recipientDisplayName = item.paidToIdNumber
+    ? `${item.paidTo || '-'} [ID: #${item.paidToIdNumber}]`
+    : (item.paidTo || '-');
 
-  drawRow('Expense Category:', item.category || 'General Expense', curY);
-  curY += 22;
+  drawRow('Paid To (Recipient / Vendor):', recipientDisplayName);
+  drawRow('Expense Category:', item.category || 'General Expense');
 
   if (item.purpose) {
-    drawRow('Purpose of Payment:', item.purpose, curY);
-    curY += 22;
+    drawRow('Purpose of Payment:', item.purpose);
   }
 
-  drawRow('Payment Mode:', item.paymentMode || 'Cash', curY);
-  curY += 22;
+  drawRow('Payment Mode:', item.paymentMode || 'Cash');
 
   if (item.description) {
-    drawRow('Particulars / Remarks:', item.description, curY);
-    curY += 24;
-  } else {
-    curY += 6;
+    drawRow('Particulars / Remarks:', item.description);
   }
 
   // Amount Highlight Box
+  const boxY = Math.max(curY + 4, 236);
   doc.setFillColor(255, 241, 242); // rose-50
   doc.setDrawColor(253, 164, 175); // rose-300
   doc.setLineWidth(1.5);
-  doc.roundedRect(35, curY, pageW - 70, 46, 6, 6, 'FD');
+  doc.roundedRect(35, boxY, pageW - 70, 46, 6, 6, 'FD');
 
   doc.setFont(fontName, 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(190, 18, 60);
-  doc.text('TOTAL AMOUNT DISBURSED:', 48, curY + 18);
+  doc.text('TOTAL AMOUNT DISBURSED:', 48, boxY + 18);
 
   const amtFormatted = safe(`₹ ${Number(item.amount || 0).toLocaleString('en-IN')}`);
   doc.setFont(fontName, 'bold');
   doc.setFontSize(16);
   doc.setTextColor(225, 29, 72);
-  doc.text(amtFormatted, 48, curY + 38);
+  doc.text(amtFormatted, 48, boxY + 38);
 
   // Status Stamp inside Box
   doc.setFont(fontName, 'bold');
   doc.setFontSize(10);
   doc.setTextColor(190, 18, 60);
-  doc.text('DISBURSED & VERIFIED ✓', pageW - 48, curY + 28, { align: 'right' });
+  doc.text('DISBURSED & VERIFIED ✓', pageW - 48, boxY + 28, { align: 'right' });
 
   // Signature lines at bottom
-  const sigY = pageH - 55;
+  const sigY = pageH - 52;
   doc.setDrawColor(203, 213, 225);
   doc.setLineWidth(0.8);
   doc.line(35, sigY, 190, sigY);

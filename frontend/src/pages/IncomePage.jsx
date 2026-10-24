@@ -168,23 +168,37 @@ export default function IncomePage() {
     ).slice(0, 35);
   }, [membersList, memberSearchQuery]);
 
+  const getMemberInfo = (item) => {
+    if (!item) return null;
+    return membersList.find(m =>
+      (item.memberId && m.id === item.memberId) ||
+      (item.donorName && m.name && m.name.toLowerCase().trim() === item.donorName.toLowerCase().trim())
+    );
+  };
+
+  const handleDownloadReceipt = (item) => {
+    const m = getMemberInfo(item);
+    exportSingleIncomeReceiptPdf({
+      ...item,
+      donorIdNumber: m?.idNumber || null,
+    });
+  };
+
   const handleSelectMember = (member) => {
     setFormData(prev => ({
       ...prev,
+      memberId: member.id,
       donorName: member.name,
       donorPhone: member.phone || prev.donorPhone || '',
       donorAddress: member.address || member.division || prev.donorAddress || '',
     }));
     setShowMemberDropdown(false);
     setMemberSearchQuery('');
-    toast.success(`Selected member: ${member.name}`);
+    toast.success(`Selected member: ${member.name} ${member.idNumber ? `(#${member.idNumber})` : ''}`);
   };
 
   const handleSendWhatsAppReceipt = (item) => {
-    const matched = membersList.find(m =>
-      (item.memberId && m.id === item.memberId) ||
-      (item.donorName && m.name && m.name.toLowerCase().trim() === item.donorName.toLowerCase().trim())
-    );
+    const matched = getMemberInfo(item);
     let balanceText = '';
     if (matched) {
       if ((matched.totalDueAmount || 0) > 0) {
@@ -263,23 +277,26 @@ export default function IncomePage() {
   };
 
   // Export to PDF
-  const handleExportPdf = ({ scope, month, year, periodLabel }) => {
+  const handleExportPdf = ({ scope, month, year, periodLabel, orientation = 'landscape' }) => {
     const dataToExport = incomes.filter(inc => {
       if (scope === 'all') return true;
       const d = new Date(inc.date);
       return (d.getMonth() + 1 === month) && (d.getFullYear() === year);
     });
 
-    const columns = ['Date', 'Donor / Member Name', 'Particulars / Description', 'Category', 'Payment Mode', 'Amount (Rs.)'];
-    const rows = dataToExport.map(item => {
+    const columns = ['#', 'Date', 'Donor Name', 'Member ID', 'Particulars / Description', 'Category', 'Payment Mode', 'Amount (₹)'];
+    const rows = dataToExport.map((item, idx) => {
       const cleanParticulars = (item.description ? item.description.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() : '') || item.category || '-';
+      const m = getMemberInfo(item);
       return [
+        idx + 1,
         formatDateDDMMYYYY(item.date),
         item.donorName || '-',
+        m?.idNumber ? `#${m.idNumber}` : '-',
         cleanParticulars,
         item.category || '-',
         item.paymentMode || 'Cash',
-        'Rs. ' + Number(item.amount).toLocaleString('en-IN')
+        '₹' + Number(item.amount).toLocaleString('en-IN')
       ];
     });
 
@@ -291,8 +308,10 @@ export default function IncomePage() {
       dateRange: periodLabel,
       columns,
       rows,
+      orientation,
+      includeSlNo: false,
       summaryRows: [
-        { label: 'Total Collections:', value: 'Rs. ' + Number(total).toLocaleString('en-IN'), bold: true, highlight: true }
+        { label: 'Total Collections:', value: '₹' + Number(total).toLocaleString('en-IN'), bold: true, highlight: true }
       ],
       fileName: `Masjid_Al_Noor_Income_${periodLabel.replace(/\s+/g, '_')}.pdf`
     });
@@ -557,8 +576,13 @@ export default function IncomePage() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="font-bold text-sm text-slate-900 dark:text-white">
-                      {item.donorName}
+                    <div className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+                      <span>{item.donorName}</span>
+                      {getMemberInfo(item)?.idNumber && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
+                          #{getMemberInfo(item).idNumber}
+                        </span>
+                      )}
                     </div>
                     <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
                       <span>{formatDateDDMMYYYY(item.date)}</span>
@@ -580,7 +604,7 @@ export default function IncomePage() {
                     )}
                     <button
                       type="button"
-                      onClick={() => exportSingleIncomeReceiptPdf(item)}
+                      onClick={() => handleDownloadReceipt(item)}
                       className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
                       title="Download Bill Receipt (PDF)"
                     >
@@ -675,8 +699,13 @@ export default function IncomePage() {
                       {formatDateDDMMYYYY(item.date)}
                     </td>
                     <td className="py-3.5 px-4">
-                      <div className="font-semibold text-slate-900 dark:text-white">
-                        {item.donorName}
+                      <div className="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+                        <span>{item.donorName}</span>
+                        {getMemberInfo(item)?.idNumber && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
+                            #{getMemberInfo(item).idNumber}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-slate-400">
                         {item.donorPhone && <span>📞 {item.donorPhone}</span>}
@@ -726,7 +755,7 @@ export default function IncomePage() {
                       <div className="inline-flex items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => exportSingleIncomeReceiptPdf(item)}
+                          onClick={() => handleDownloadReceipt(item)}
                           className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors"
                           title="Download Bill Receipt (PDF)"
                         >
@@ -1054,8 +1083,13 @@ export default function IncomePage() {
                                 className="w-full text-left px-3 py-2 hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40 flex items-center justify-between transition-colors group"
                               >
                                 <div>
-                                  <div className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600">
-                                    {m.name}
+                                  <div className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 flex items-center gap-1.5">
+                                    <span>{m.name}</span>
+                                    {m.idNumber && (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
+                                        #{m.idNumber}
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
                                     {m.phone && <span>📞 {m.phone}</span>}

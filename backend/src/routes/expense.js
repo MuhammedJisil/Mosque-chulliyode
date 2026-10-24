@@ -11,6 +11,8 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const { search, category, paymentMode, month, year, startDate, endDate, sort = 'newest' } = req.query;
 
+    const where = {};
+
     const isPostgres = Boolean(
       process.env.RENDER ||
       process.env.NODE_ENV === 'production' ||

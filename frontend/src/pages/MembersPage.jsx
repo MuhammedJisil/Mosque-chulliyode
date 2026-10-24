@@ -7,6 +7,7 @@ import { exportToExcel } from '../utils/exportExcel';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import Pagination from '../components/Pagination';
 import DivisionDropdown from '../components/DivisionDropdown';
+import PdfOrientationModal from '../components/PdfOrientationModal';
 import { PAYMENT_MODES, MONTH_NAMES } from '../utils/categoriesData';
 import { useToast } from '../context/ToastContext';
 import {
@@ -62,6 +63,8 @@ export default function MembersPage() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailMember, setDetailMember] = useState(null);
   const [detailYear, setDetailYear] = useState(new Date().getFullYear());
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfTarget, setPdfTarget] = useState(null); // 'members' | 'survey'
 
   // Form State for Add / Edit Member
   const initialForm = {
@@ -516,9 +519,11 @@ export default function MembersPage() {
   };
 
   // Export Members List to PDF
-  const handleExportPdf = () => {
-    const columns = ['Name', 'Phone', 'Area / Division', 'Monthly Fee', 'Opening Balance', 'Due Months', 'Total Due (₹)'];
-    const rows = displayedMembers.map(m => [
+  const handleExportPdf = (orientation = 'landscape') => {
+    const columns = ['#', 'ID No', 'Name', 'Phone', 'Area / Division', 'Monthly Fee', 'Opening Balance', 'Due Months', 'Total Due (₹)'];
+    const rows = displayedMembers.map((m, idx) => [
+      idx + 1,
+      m.idNumber || '-',
       m.name,
       m.phone || '-',
       m.division || '-',
@@ -537,6 +542,8 @@ export default function MembersPage() {
       dateRange: 'Current Status',
       columns,
       rows,
+      orientation,
+      includeSlNo: false,
       summaryRows: [
         { label: 'Total Opening Balance Due:', value: '₹' + Number(totalOpeningBalDue).toLocaleString('en-IN') },
         { label: 'Total Outstanding Dues:', value: '₹' + Number(totalDues).toLocaleString('en-IN'), bold: true, highlight: true }
@@ -548,6 +555,7 @@ export default function MembersPage() {
   // Export Members to Excel
   const handleExportExcel = () => {
     const excelRows = displayedMembers.map(m => ({
+      'ID No': m.idNumber || '',
       'Name': m.name,
       'Phone': m.phone,
       'Area / Division': m.division || '',
@@ -571,12 +579,21 @@ export default function MembersPage() {
   };
 
   // Dedicated Mahallu Family Census & Survey PDF Export
-  const handleExportSurveyPdf = () => {
+  const handleExportSurveyPdf = (orientation = 'landscape') => {
     exportFamilySurveyPdf({
       members: displayedMembers,
       division: divisionFilter !== 'All' ? divisionFilter : 'All Divisions / Areas',
+      orientation,
       fileName: `Mahallu_Family_Survey_${divisionFilter !== 'All' ? divisionFilter.replace(/\s+/g, '_') : 'All'}.pdf`
     });
+  };
+
+  const handleExecutePdfDownload = (orientation) => {
+    if (pdfTarget === 'survey') {
+      handleExportSurveyPdf(orientation);
+    } else {
+      handleExportPdf(orientation);
+    }
   };
 
   const totalDuesAll = useMemo(() => displayedMembers.reduce((acc, m) => acc + (m.totalDueAmount || 0), 0), [displayedMembers]);
@@ -603,7 +620,7 @@ export default function MembersPage() {
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={handleExportSurveyPdf}
+            onClick={() => { setPdfTarget('survey'); setShowPdfModal(true); }}
             className="p-2 sm:px-3 sm:py-2 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/40 shadow-xs flex items-center gap-1.5 transition-all"
             title="Download Family Survey & Census PDF Report"
           >
@@ -611,7 +628,7 @@ export default function MembersPage() {
             <span className="hidden sm:inline">Family Survey PDF</span>
           </button>
           <button
-            onClick={handleExportPdf}
+            onClick={() => { setPdfTarget('members'); setShowPdfModal(true); }}
             className="p-2 sm:px-3 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 shadow-xs flex items-center gap-1.5"
             title="Download PDF Report"
           >
@@ -2014,6 +2031,15 @@ export default function MembersPage() {
         </div>,
         document.body
       )}
+
+      {/* PDF Orientation Chooser Modal */}
+      <PdfOrientationModal
+        isOpen={showPdfModal}
+        onClose={() => setShowPdfModal(false)}
+        onSelect={handleExecutePdfDownload}
+        title={pdfTarget === 'survey' ? 'Download Family Survey Report PDF' : 'Download Member Due Report PDF'}
+        recommended="landscape"
+      />
     </div>
   );
 }

@@ -301,7 +301,7 @@ export default function StaffPage() {
     exportToExcel({
       data: excelRows,
       sheetName: 'Staff & Payroll',
-      fileName: 'Jamia_Al_Noor_Staff_List.xlsx'
+      fileName: 'Masjid_Al_Noor_Staff_List.xlsx'
     });
   };
 
