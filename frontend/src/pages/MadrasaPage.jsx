@@ -178,28 +178,35 @@ export default function MadrasaPage() {
     });
   }, [students, statusFilter]);
 
-  // Overall Statistics
+  // Statistics tailored dynamically to current statusFilter
   const stats = useMemo(() => {
-    const totalParents = students.length;
-    const activeParents = students.filter(s => s.status === 'Active').length;
-    const totalKids = students
-      .filter(s => s.status === 'Active')
-      .reduce((acc, s) => acc + (s.studentsCount || 1), 0);
-    const totalMonthlyFeePotential = students
-      .filter(s => s.status === 'Active')
-      .reduce((acc, s) => acc + (s.monthlyFee || 0), 0);
-    const totalDuesAmount = students.reduce((acc, s) => acc + (s.totalDueAmount || 0), 0);
-    const parentsWithDues = students.filter(s => (s.dueMonthsCount > 0 || (s.netOpeningBalanceDue || 0) > 0)).length;
+    const targetStudents = statusFilter === 'Active'
+      ? students.filter(s => s.status === 'Active')
+      : statusFilter === 'Inactive'
+        ? students.filter(s => s.status === 'Inactive')
+        : statusFilter === 'Has Dues'
+          ? students.filter(s => s.dueMonthsCount > 0 || (s.netOpeningBalanceDue || 0) > 0)
+          : students;
+
+    const totalParents = targetStudents.length;
+    const activeParents = targetStudents.filter(s => s.status === 'Active').length;
+    const totalKids = targetStudents.reduce((acc, s) => acc + (s.studentsCount || 1), 0);
+    const totalMonthlyFeePotential = targetStudents.reduce((acc, s) => acc + (s.monthlyFee || 0), 0);
+    const totalDuesAmount = targetStudents.reduce((acc, s) => acc + (s.totalDueAmount || 0), 0);
+    const parentsWithDues = targetStudents.filter(s => (s.dueMonthsCount > 0 || (s.netOpeningBalanceDue || 0) > 0)).length;
+    const clearedParents = totalParents - parentsWithDues;
 
     return {
+      statusFilter,
       totalParents,
       activeParents,
       totalKids,
       totalMonthlyFeePotential,
       totalDuesAmount,
       parentsWithDues,
+      clearedParents,
     };
-  }, [students]);
+  }, [students, statusFilter]);
 
   // Members search list for parent selector
   const filteredParentMembers = useMemo(() => {
@@ -682,40 +689,46 @@ export default function MadrasaPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-medium uppercase tracking-wider">Registered Parents</span>
+            <span className="text-xs font-medium uppercase tracking-wider">
+              {statusFilter === 'Active' ? 'Active Parents' : statusFilter === 'Inactive' ? 'Inactive Parents' : statusFilter === 'Has Dues' ? 'Parents With Dues' : 'Registered Parents'}
+            </span>
             <Users className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-bold text-slate-900 dark:text-white">
             {stats.totalParents}
           </div>
           <div className="text-[11px] text-emerald-600 font-semibold mt-1">
-            {stats.totalKids} Total Student(s) Enrolled
+            {stats.totalKids} Student(s) Enrolled {statusFilter !== 'All' ? `(${statusFilter})` : ''}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-medium uppercase tracking-wider">Monthly Potential</span>
+            <span className="text-xs font-medium uppercase tracking-wider">
+              {statusFilter === 'Inactive' ? 'Inactive Fee Total' : 'Monthly Potential'}
+            </span>
             <IndianRupee className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-2xl font-bold text-slate-900 dark:text-white">
             ₹{stats.totalMonthlyFeePotential.toLocaleString('en-IN')}
           </div>
           <div className="text-[11px] text-slate-400 mt-1">
-            Expected total monthly fees
+            {statusFilter === 'Inactive' ? 'Discontinued families monthly sum' : 'Expected monthly fee collection'}
           </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-medium uppercase tracking-wider">Pending Dues</span>
+            <span className="text-xs font-medium uppercase tracking-wider">
+              {statusFilter === 'Active' ? 'Active Dues' : statusFilter === 'Inactive' ? 'Inactive / Left Dues' : 'Pending Dues'}
+            </span>
             <AlertCircle className="w-4 h-4 text-rose-600" />
           </div>
           <div className="text-2xl font-bold text-rose-600 dark:text-rose-400">
             ₹{stats.totalDuesAmount.toLocaleString('en-IN')}
           </div>
           <div className="text-[11px] text-rose-600/80 font-medium mt-1">
-            Across {stats.parentsWithDues} family(ies)
+            Across {stats.parentsWithDues} {statusFilter !== 'All' ? statusFilter.toLowerCase() : ''} family(ies)
           </div>
         </div>
 
@@ -725,10 +738,10 @@ export default function MadrasaPage() {
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-            {stats.totalParents - stats.parentsWithDues}
+            {stats.clearedParents}
           </div>
           <div className="text-[11px] text-emerald-600 font-medium mt-1">
-            Parents up to date
+            {statusFilter === 'All' ? 'Parents' : statusFilter} up to date
           </div>
         </div>
       </div>

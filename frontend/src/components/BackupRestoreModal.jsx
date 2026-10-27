@@ -77,7 +77,7 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
 
   // Handle Restore
   const handleExecuteRestore = async () => {
-    if (!parsedBackup) return;
+    if (!parsedBackup || restoring) return;
     setRestoring(true);
     try {
       const res = await api.post('/api/backup/restore', {
@@ -91,10 +91,10 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
         }, 1500);
       } else {
         toast.error(res.message || 'Failed to restore backup.');
+        setRestoring(false);
       }
     } catch (err) {
       toast.error(err.message || 'Error restoring database');
-    } finally {
       setRestoring(false);
     }
   };
@@ -102,27 +102,35 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-start justify-center animate-fade-in"
-      onClick={onClose}
+      onClick={() => {
+        if (!restoring) onClose();
+      }}
     >
       <div
         className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full my-6 sm:my-10 p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shrink-0 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Full Restoring Loading Overlay */}
+        {/* Full Restoring Loading Overlay - Blocks all interactions and shows animated loading */}
         {restoring && (
-          <div className="absolute inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-3xl flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade-in">
-            <div className="w-14 h-14 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-            <div className="space-y-1">
+          <div className="absolute inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade-in pointer-events-auto select-none">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-emerald-500/30 rounded-full animate-ping absolute inset-0" />
+              <div className="w-16 h-16 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+            <div className="space-y-1.5">
               <h4 className="text-base font-bold text-slate-900 dark:text-white">
                 Restoring Database from Backup...
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs">
-                Importing all tables, members, payments, and accounting records. Please wait and do not close or refresh this tab.
+                Restoring members, madrasa records, food duties, divisions, accounting ledgers, and staff payroll.
+              </p>
+              <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                Please wait. Do not close or refresh this window.
               </p>
             </div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-xs font-semibold shadow-xs">
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              <span>Applying database changes...</span>
+              <span>Applying database changes safely...</span>
             </div>
           </div>
         )}
@@ -249,13 +257,18 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
                       <AlertTriangle className="w-4 h-4 shrink-0" />
                       Ready to Restore
                     </div>
-                    <div className="text-[11px] text-amber-900/80 dark:text-amber-300/80 space-y-0.5">
+                    <div className="text-[11px] text-amber-900/80 dark:text-amber-300/80 space-y-1">
                       <p>• Exported On: {parsedBackup.exportedAt ? new Date(parsedBackup.exportedAt).toLocaleString('en-GB') : 'Unknown'}</p>
-                      <p>
-                        • Records Found: {parsedBackup.counts?.members || parsedBackup.data?.members?.length || 0} Members, {parsedBackup.counts?.incomes || parsedBackup.data?.incomes?.length || 0} Incomes, {parsedBackup.counts?.expenses || parsedBackup.data?.expenses?.length || 0} Expenses, {parsedBackup.counts?.staff || parsedBackup.data?.staff?.length || 0} Staff.
-                      </p>
-                      <p className="font-bold text-rose-600 dark:text-rose-400 pt-1">
-                        ⚠️ Restoring will overwrite existing database records with this backup.
+                      <div className="grid grid-cols-2 gap-1 py-1 text-[11px]">
+                        <span>• Members: <strong>{parsedBackup.counts?.members ?? parsedBackup.data?.members?.length ?? 0}</strong></span>
+                        <span>• Madrasa: <strong>{parsedBackup.counts?.madrasaStudents ?? parsedBackup.data?.madrasaStudents?.length ?? 0}</strong></span>
+                        <span>• Food Duties: <strong>{parsedBackup.counts?.foodDuties ?? parsedBackup.data?.foodDuties?.length ?? 0}</strong></span>
+                        <span>• Staff: <strong>{parsedBackup.counts?.staff ?? parsedBackup.data?.staff?.length ?? 0}</strong></span>
+                        <span>• Incomes: <strong>{parsedBackup.counts?.incomes ?? parsedBackup.data?.incomes?.length ?? 0}</strong></span>
+                        <span>• Expenses: <strong>{parsedBackup.counts?.expenses ?? parsedBackup.data?.expenses?.length ?? 0}</strong></span>
+                      </div>
+                      <p className="font-bold text-rose-600 dark:text-rose-400 pt-0.5">
+                        ⚠️ Restoring will overwrite existing database records with this backup file.
                       </p>
                     </div>
 
@@ -263,7 +276,7 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
                       type="button"
                       onClick={handleExecuteRestore}
                       disabled={restoring}
-                      className="w-full py-2 px-3 mt-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      className="w-full py-2.5 px-3 mt-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all active:scale-[0.99]"
                     >
                       {restoring ? (
                         <>
@@ -289,7 +302,8 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors"
+            disabled={restoring || downloading}
+            className="px-4 py-2 text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors disabled:opacity-40"
           >
             Close
           </button>

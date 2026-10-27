@@ -251,16 +251,16 @@ export default function ExpensePage() {
       return (d.getMonth() + 1 === month) && (d.getFullYear() === year);
     });
 
-    const columns = ['#', 'Date', 'Paid To / Vendor', 'Member ID', 'Category', 'Purpose / Item', 'Payment Mode', 'Amount (₹)'];
+    const columns = ['#', 'Date', 'Paid To / Vendor', 'Category', 'Purpose / Item', 'Particulars / Notes', 'Payment Mode', 'Amount (₹)'];
     const rows = dataToExport.map((item, idx) => {
-      const m = getMemberInfo(item);
+      const cleanDesc = (item.description ? item.description.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() : '') || '-';
       return [
         idx + 1,
         formatDateDDMMYYYY(item.date),
         item.paidTo || '-',
-        m?.idNumber ? `#${m.idNumber}` : '-',
         item.category || '-',
         item.purpose || '-',
+        cleanDesc,
         item.paymentMode || 'Cash',
         '₹' + Number(item.amount).toLocaleString('en-IN')
       ];

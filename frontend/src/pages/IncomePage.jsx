@@ -81,8 +81,10 @@ export default function IncomePage() {
   const [formData, setFormData] = useState(initialFormState);
   const [submitting, setSubmitting] = useState(false);
 
-  // Members list for Donor dropdown & search
+  // Members & Madrasa list for Donor dropdown & search
   const [membersList, setMembersList] = useState([]);
+  const [madrasaStudentsList, setMadrasaStudentsList] = useState([]);
+  const [donorSourceTab, setDonorSourceTab] = useState('ALL'); // 'ALL' | 'MEMBERS' | 'MADRASA'
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [showMemberDropdown, setShowMemberDropdown] = useState(false);
   const memberDropdownRef = useRef(null);
@@ -127,6 +129,18 @@ export default function IncomePage() {
     }
   };
 
+  // Load madrasa students for donor dropdown
+  const fetchMadrasaStudents = async () => {
+    try {
+      const res = await api.get('/api/madrasa');
+      if (res.success && res.students) {
+        setMadrasaStudentsList(res.students);
+      }
+    } catch (err) {
+      console.error('Failed to load madrasa students for donor dropdown:', err);
+    }
+  };
+
   // Load custom categories
   const fetchCustomCategories = async () => {
     try {
@@ -142,6 +156,7 @@ export default function IncomePage() {
   useEffect(() => {
     fetchCustomCategories();
     fetchMembers();
+    fetchMadrasaStudents();
   }, []);
 
   // Close member dropdown on outside click
@@ -155,18 +170,58 @@ export default function IncomePage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter members for donor dropdown
-  const filteredMembers = useMemo(() => {
-    if (!memberSearchQuery.trim()) return membersList.slice(0, 35);
+  // Filter combined members & madrasa students for donor dropdown
+  const combinedDonors = useMemo(() => {
+    const list = [];
+    if (donorSourceTab === 'ALL' || donorSourceTab === 'MEMBERS') {
+      membersList.forEach(m => {
+        list.push({
+          type: 'MEMBER',
+          id: `mem-${m.id}`,
+          memberId: m.id,
+          name: m.name,
+          phone: m.phone || '',
+          address: m.address || m.division || '',
+          division: m.division || '',
+          idNumber: m.idNumber || '',
+          raw: m,
+        });
+      });
+    }
+    if (donorSourceTab === 'ALL' || donorSourceTab === 'MADRASA') {
+      madrasaStudentsList.forEach(s => {
+        const studentTitle = s.parentName || s.studentName || 'Madrasa Student';
+        list.push({
+          type: 'MADRASA',
+          id: `mad-${s.id}`,
+          studentId: s.id,
+          memberId: s.memberId || null,
+          name: studentTitle,
+          studentName: s.studentName,
+          parentName: s.parentName,
+          phone: s.parentPhone || s.member?.phone || '',
+          address: s.address || s.division || s.member?.address || '',
+          division: s.division || s.member?.division || '',
+          classLevel: s.classLevel || '',
+          admissionNo: s.admissionNo || '',
+          idNumber: s.member?.idNumber || '',
+          raw: s,
+        });
+      });
+    }
+
+    if (!memberSearchQuery.trim()) return list.slice(0, 40);
     const q = memberSearchQuery.toLowerCase().trim();
-    return membersList.filter(m =>
-      (m.name && m.name.toLowerCase().includes(q)) ||
-      (m.phone && m.phone.toLowerCase().includes(q)) ||
-      (m.address && m.address.toLowerCase().includes(q)) ||
-      (m.division && m.division.toLowerCase().includes(q)) ||
-      (m.membershipNo && String(m.membershipNo).toLowerCase().includes(q))
-    ).slice(0, 35);
-  }, [membersList, memberSearchQuery]);
+    return list.filter(d =>
+      d.name.toLowerCase().includes(q) ||
+      (d.phone && d.phone.includes(q)) ||
+      (d.address && d.address.toLowerCase().includes(q)) ||
+      (d.division && d.division.toLowerCase().includes(q)) ||
+      (d.studentName && d.studentName.toLowerCase().includes(q)) ||
+      (d.parentName && d.parentName.toLowerCase().includes(q)) ||
+      (d.idNumber && String(d.idNumber).toLowerCase().includes(q))
+    ).slice(0, 40);
+  }, [membersList, madrasaStudentsList, donorSourceTab, memberSearchQuery]);
 
   const getMemberInfo = (item) => {
     if (!item) return null;
@@ -184,17 +239,34 @@ export default function IncomePage() {
     });
   };
 
-  const handleSelectMember = (member) => {
-    setFormData(prev => ({
-      ...prev,
-      memberId: member.id,
-      donorName: member.name,
-      donorPhone: member.phone || prev.donorPhone || '',
-      donorAddress: member.address || member.division || prev.donorAddress || '',
-    }));
+  const handleSelectDonor = (donor) => {
+    if (donor.type === 'MEMBER') {
+      setFormData(prev => ({
+        ...prev,
+        memberId: donor.memberId,
+        studentId: null,
+        donorName: donor.name,
+        donorPhone: donor.phone || prev.donorPhone || '',
+        donorAddress: donor.address || prev.donorAddress || '',
+      }));
+      toast.success(`Selected member: ${donor.name} ${donor.idNumber ? `(#${donor.idNumber})` : ''}`);
+    } else {
+      const displayName = donor.parentName
+        ? `${donor.parentName}${donor.studentName ? ` (Parent of ${donor.studentName})` : ''}`
+        : (donor.studentName || donor.name);
+      setFormData(prev => ({
+        ...prev,
+        memberId: donor.memberId || null,
+        studentId: donor.studentId,
+        donorName: displayName,
+        donorPhone: donor.phone || prev.donorPhone || '',
+        donorAddress: donor.address || prev.donorAddress || '',
+        category: prev.category === 'Donation' ? 'Madrasa Fee' : prev.category,
+      }));
+      toast.success(`Selected madrasa: ${displayName}`);
+    }
     setShowMemberDropdown(false);
     setMemberSearchQuery('');
-    toast.success(`Selected member: ${member.name} ${member.idNumber ? `(#${member.idNumber})` : ''}`);
   };
 
   const handleSendWhatsAppReceipt = (item) => {
@@ -284,15 +356,13 @@ export default function IncomePage() {
       return (d.getMonth() + 1 === month) && (d.getFullYear() === year);
     });
 
-    const columns = ['#', 'Date', 'Donor Name', 'Member ID', 'Particulars / Description', 'Category', 'Payment Mode', 'Amount (₹)'];
+    const columns = ['#', 'Date', 'Donor / Member Name', 'Particulars / Months', 'Category', 'Payment Mode', 'Amount (₹)'];
     const rows = dataToExport.map((item, idx) => {
       const cleanParticulars = (item.description ? item.description.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() : '') || item.category || '-';
-      const m = getMemberInfo(item);
       return [
         idx + 1,
         formatDateDDMMYYYY(item.date),
         item.donorName || '-',
-        m?.idNumber ? `#${m.idNumber}` : '-',
         cleanParticulars,
         item.category || '-',
         item.paymentMode || 'Cash',
@@ -1008,7 +1078,7 @@ export default function IncomePage() {
                     required
                   />
 
-                  {/* Donor Name with Member Dropdown & Search */}
+                  {/* Donor Name with Member & Madrasa Dropdown & Search */}
                   <div className="relative" ref={memberDropdownRef}>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300">
@@ -1023,7 +1093,7 @@ export default function IncomePage() {
                         className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
                       >
                         <UserCheck className="w-3 h-3" />
-                        <span>Select Member ({membersList.length})</span>
+                        <span>Select Member / Madrasa ({membersList.length + madrasaStudentsList.length})</span>
                         <ChevronDown className="w-3 h-3" />
                       </button>
                     </div>
@@ -1032,7 +1102,7 @@ export default function IncomePage() {
                       <input
                         type="text"
                         required
-                        placeholder="Type name or select member..."
+                        placeholder="Type name or select member / madrasa..."
                         value={formData.donorName}
                         onChange={(e) => {
                           setFormData({ ...formData, donorName: e.target.value });
@@ -1046,57 +1116,90 @@ export default function IncomePage() {
                         type="button"
                         onClick={() => setShowMemberDropdown(prev => !prev)}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                        title="Toggle Member List"
+                        title="Toggle List"
                       >
                         <ChevronDown className="w-4 h-4" />
                       </button>
                     </div>
 
-                    {/* Member Dropdown Combobox Menu */}
+                    {/* Member & Madrasa Dropdown Combobox Menu */}
                     {showMemberDropdown && (
-                      <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden max-h-64 flex flex-col">
-                        <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                      <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden max-h-72 flex flex-col animate-fade-in">
+                        {/* Search & Tabs */}
+                        <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 space-y-2">
                           <div className="relative">
                             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                             <input
                               type="text"
                               autoFocus
-                              placeholder="Search member by name, phone, area..."
+                              placeholder="Search by name, phone, area, madrasa..."
                               value={memberSearchQuery}
                               onChange={(e) => setMemberSearchQuery(e.target.value)}
                               className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                             />
                           </div>
+                          {/* Filter Tabs */}
+                          <div className="flex items-center gap-1 text-[10px] font-semibold">
+                            <button
+                              type="button"
+                              onClick={() => setDonorSourceTab('ALL')}
+                              className={`px-2 py-0.5 rounded-md transition-colors ${donorSourceTab === 'ALL' ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                            >
+                              All ({membersList.length + madrasaStudentsList.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDonorSourceTab('MEMBERS')}
+                              className={`px-2 py-0.5 rounded-md transition-colors ${donorSourceTab === 'MEMBERS' ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                            >
+                              Mahallu ({membersList.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDonorSourceTab('MADRASA')}
+                              className={`px-2 py-0.5 rounded-md transition-colors ${donorSourceTab === 'MADRASA' ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                            >
+                              Madrasa ({madrasaStudentsList.length})
+                            </button>
+                          </div>
                         </div>
 
                         <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 text-xs flex-1">
-                          {filteredMembers.length === 0 ? (
+                          {combinedDonors.length === 0 ? (
                             <div className="p-3 text-center text-slate-400 text-xs">
-                              No members match "{memberSearchQuery}". You can keep typing custom donor name.
+                              No records match "{memberSearchQuery}". You can keep typing custom donor name.
                             </div>
                           ) : (
-                            filteredMembers.map((m) => (
+                            combinedDonors.map((d) => (
                               <button
-                                key={m.id}
+                                key={d.id}
                                 type="button"
-                                onClick={() => handleSelectMember(m)}
+                                onClick={() => handleSelectDonor(d)}
                                 className="w-full text-left px-3 py-2 hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40 flex items-center justify-between transition-colors group"
                               >
                                 <div>
-                                  <div className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 flex items-center gap-1.5">
-                                    <span>{m.name}</span>
-                                    {m.idNumber && (
-                                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
-                                        #{m.idNumber}
+                                  <div className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 flex items-center gap-1.5 flex-wrap">
+                                    <span>{d.name}</span>
+                                    {d.type === 'MEMBER' && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
+                                        Mahallu {d.idNumber ? `#${d.idNumber}` : ''}
+                                      </span>
+                                    )}
+                                    {d.type === 'MADRASA' && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
+                                        Madrasa {d.classLevel ? `• Class ${d.classLevel}` : ''}
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
-                                    {m.phone && <span>📞 {m.phone}</span>}
-                                    {(m.address || m.division) && <span>📍 {m.address || m.division}</span>}
+                                  <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
+                                    {d.type === 'MADRASA' && d.studentName && d.parentName && (
+                                      <span className="text-amber-700 dark:text-amber-400 font-medium">Student: {d.studentName}</span>
+                                    )}
+                                    {d.phone && <span>📞 {d.phone}</span>}
+                                    {(d.address || d.division) && <span>📍 {d.address || d.division}</span>}
                                   </div>
                                 </div>
-                                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200/50 dark:border-emerald-800/50">
+                                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200/50 dark:border-emerald-800/50 shrink-0">
                                   Select
                                 </span>
                               </button>
@@ -1105,7 +1208,7 @@ export default function IncomePage() {
                         </div>
 
                         <div className="p-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between text-[11px]">
-                          <span className="text-slate-400">Can't find? Type any name above.</span>
+                          <span className="text-slate-400">Can't find? Type any donor name above.</span>
                           <button
                             type="button"
                             onClick={() => setShowMemberDropdown(false)}

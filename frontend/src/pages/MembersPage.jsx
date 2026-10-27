@@ -520,10 +520,9 @@ export default function MembersPage() {
 
   // Export Members List to PDF
   const handleExportPdf = (orientation = 'landscape') => {
-    const columns = ['#', 'ID No', 'Name', 'Phone', 'Area / Division', 'Monthly Fee', 'Opening Balance', 'Due Months', 'Total Due (₹)'];
+    const columns = ['#', 'Name', 'Phone', 'Area / Division', 'Monthly Fee', 'Opening Balance', 'Due Months', 'Total Due (₹)'];
     const rows = displayedMembers.map((m, idx) => [
       idx + 1,
-      m.idNumber || '-',
       m.name,
       m.phone || '-',
       m.division || '-',

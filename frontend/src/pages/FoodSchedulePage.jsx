@@ -426,7 +426,7 @@ export default function FoodSchedulePage() {
     const columns = ['Date & Day', 'House / Member', 'Division / Area', 'Meal', 'Phone', 'Status', 'Notes'];
     const rows = filteredDuties.map(d => [
       new Date(d.date).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }),
-      d.member ? (d.member.idNumber ? `[#${d.member.idNumber}] ${d.member.name}` : d.member.name) : (d.customName || 'Unassigned'),
+      d.member ? d.member.name : (d.customName || 'Unassigned'),
       d.division || d.member?.division || '-',
       d.mealType || 'All Day',
       d.phone || d.member?.phone || '-',

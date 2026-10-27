@@ -30,10 +30,10 @@ const loadNotoSansFont = async (doc) => {
 };
 
 /**
- * Currency formatter for jsPDF with ₹ symbol.
+ * Currency formatter for jsPDF with ₹ symbol (no space between symbol and amount).
  */
 export const fmtPdfAmount = (num) =>
-  '₹ ' + Number(num || 0).toLocaleString('en-IN');
+  '₹' + Number(num || 0).toLocaleString('en-IN');
 
 export const exportToPdf = async ({
   title = 'Masjid al noor Financial Statement',
@@ -59,7 +59,7 @@ export const exportToPdf = async ({
   // If font failed to load, fallback to replace ₹ with Rs.
   const safe = (str) => {
     if (typeof str !== 'string') return str;
-    return fontLoaded ? str : str.replace(/₹/g, 'Rs. ');
+    return fontLoaded ? str : str.replace(/₹/g, 'Rs.');
   };
 
   const pageW = doc.internal.pageSize.width;
@@ -115,14 +115,14 @@ export const exportToPdf = async ({
     doc.text(safe(subtitle), pageW - 30, 105, { align: 'right' });
   }
 
-  // ── Table ───────────────────────────────────────────────────────────────────
+  // ── Table with Clear Grid Borders and Legible Font Size ─────────────────────
   const safeRows = finalRows.map(row =>
     row.map(cell => (typeof cell === 'string' ? safe(cell) : cell))
   );
 
   const isWide = finalColumns.length > 7;
-  const tableFontSize = finalOrientation === 'portrait' ? (isWide ? 7 : 8) : (isWide ? 8 : 8.5);
-  const tableHeadFontSize = tableFontSize + 0.5;
+  const tableFontSize = finalOrientation === 'portrait' ? (isWide ? 8 : 8.5) : (isWide ? 8.5 : 9.5);
+  const tableHeadFontSize = tableFontSize + 1;
 
   doc.autoTable({
     startY: 135,
@@ -132,9 +132,11 @@ export const exportToPdf = async ({
     styles: {
       font: fontName,
       fontSize: tableFontSize,
-      cellPadding: finalOrientation === 'portrait' && isWide ? 3 : 4,
+      cellPadding: finalOrientation === 'portrait' && isWide ? 3.5 : 4.5,
       overflow: 'linebreak',
-      textColor: [30, 41, 59]
+      textColor: [15, 23, 42],
+      lineWidth: 0.6,
+      lineColor: [140, 150, 165]
     },
     headStyles: {
       fillColor: [6, 78, 59],
@@ -142,8 +144,12 @@ export const exportToPdf = async ({
       font: fontName,
       fontStyle: 'bold',
       fontSize: tableHeadFontSize,
-      halign: 'left'
+      halign: 'left',
+      lineWidth: 0.6,
+      lineColor: [6, 78, 59]
     },
+    tableLineColor: [140, 150, 165],
+    tableLineWidth: 0.6,
     columnStyles: {
       0: { cellWidth: 26, halign: 'center' }
     },
@@ -278,7 +284,6 @@ export const exportFamilySurveyPdf = async ({
 
   const columns = [
     '#',
-    'ID No',
     'Head of House / Member',
     'Phone',
     'Division / Area',
@@ -290,7 +295,6 @@ export const exportFamilySurveyPdf = async ({
 
   const rows = members.map((m, idx) => [
     idx + 1,
-    m.idNumber || '-',
     m.name || '-',
     m.phone || '-',
     m.division || '-',
@@ -311,24 +315,29 @@ export const exportFamilySurveyPdf = async ({
     theme: 'grid',
     styles: {
       font: fontName,
-      fontSize: finalOrientation === 'portrait' ? 7 : 8,
-      cellPadding: finalOrientation === 'portrait' ? 3 : 4,
+      fontSize: finalOrientation === 'portrait' ? 8 : 9,
+      cellPadding: 4,
       overflow: 'linebreak',
-      textColor: [30, 41, 59]
+      textColor: [15, 23, 42],
+      lineWidth: 0.6,
+      lineColor: [140, 150, 165]
     },
     headStyles: {
       fillColor: [6, 78, 59],
       textColor: [255, 255, 255],
       font: fontName,
       fontStyle: 'bold',
-      fontSize: finalOrientation === 'portrait' ? 7.5 : 8.5,
-      halign: 'left'
+      fontSize: finalOrientation === 'portrait' ? 8.5 : 9.5,
+      halign: 'left',
+      lineWidth: 0.6,
+      lineColor: [6, 78, 59]
     },
+    tableLineColor: [140, 150, 165],
+    tableLineWidth: 0.6,
     columnStyles: {
-      0: { cellWidth: 24, halign: 'center' },
-      1: { cellWidth: 42 },
-      6: { cellWidth: 36, halign: 'center' },
-      7: { cellWidth: 38, halign: 'center' }
+      0: { cellWidth: 26, halign: 'center' },
+      5: { cellWidth: 36, halign: 'center' },
+      6: { cellWidth: 38, halign: 'center' }
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252]
@@ -475,7 +484,7 @@ export const exportSingleIncomeReceiptPdf = async (item) => {
   doc.setTextColor(4, 120, 87);
   doc.text('AMOUNT RECEIVED:', 48, boxY + 18);
 
-  const amtFormatted = safe(`₹ ${Number(item.amount || 0).toLocaleString('en-IN')}`);
+  const amtFormatted = safe(`₹${Number(item.amount || 0).toLocaleString('en-IN')}`);
   doc.setFont(fontName, 'bold');
   doc.setFontSize(16);
   doc.setTextColor(5, 150, 105);
@@ -632,7 +641,7 @@ export const exportSingleExpenseVoucherPdf = async (item) => {
   doc.setTextColor(190, 18, 60);
   doc.text('TOTAL AMOUNT DISBURSED:', 48, boxY + 18);
 
-  const amtFormatted = safe(`₹ ${Number(item.amount || 0).toLocaleString('en-IN')}`);
+  const amtFormatted = safe(`₹${Number(item.amount || 0).toLocaleString('en-IN')}`);
   doc.setFont(fontName, 'bold');
   doc.setFontSize(16);
   doc.setTextColor(225, 29, 72);

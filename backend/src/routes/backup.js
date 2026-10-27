@@ -10,6 +10,8 @@ router.get('/export', authMiddleware, async (req, res) => {
       customCategories,
       settings,
       members,
+      madrasaStudents,
+      foodDuties,
       staff,
       incomes,
       expenses,
@@ -20,6 +22,10 @@ router.get('/export', authMiddleware, async (req, res) => {
       prisma.member.findMany({
         include: { payments: true }
       }),
+      prisma.madrasaStudent.findMany({
+        include: { payments: true }
+      }),
+      prisma.foodDuty.findMany(),
       prisma.staff.findMany({
         include: { payments: true }
       }),
@@ -33,13 +39,17 @@ router.get('/export', authMiddleware, async (req, res) => {
     const backupPayload = {
       app: 'Masjid al noor',
       subtitle: 'sirajul huda sangam chulliyode',
-      version: '1.0',
+      version: '2.0',
       exportedAt: new Date().toISOString(),
       counts: {
         customCategories: customCategories.length,
+        divisions: customCategories.filter(c => c.type === 'DIVISION').length,
         settings: settings.length,
         members: members.length,
         memberPayments: members.reduce((sum, m) => sum + (m.payments ? m.payments.length : 0), 0),
+        madrasaStudents: madrasaStudents.length,
+        madrasaPayments: madrasaStudents.reduce((sum, s) => sum + (s.payments ? s.payments.length : 0), 0),
+        foodDuties: foodDuties.length,
         staff: staff.length,
         staffPayments: staff.reduce((sum, s) => sum + (s.payments ? s.payments.length : 0), 0),
         incomes: incomes.length,
@@ -50,6 +60,8 @@ router.get('/export', authMiddleware, async (req, res) => {
         customCategories,
         settings,
         members,
+        madrasaStudents,
+        foodDuties,
         staff,
         incomes,
         expenses
@@ -78,6 +90,8 @@ router.post('/restore', authMiddleware, async (req, res) => {
       customCategories = [],
       settings = [],
       members = [],
+      madrasaStudents = [],
+      foodDuties = [],
       staff = [],
       incomes = [],
       expenses = []
@@ -86,16 +100,19 @@ router.post('/restore', authMiddleware, async (req, res) => {
     // Execute in a transaction to maintain integrity
     await prisma.$transaction(async (tx) => {
       // 1. Clear existing data in reverse dependency order
+      await tx.madrasaPayment.deleteMany();
+      await tx.madrasaStudent.deleteMany();
+      await tx.foodDuty.deleteMany();
       await tx.memberPayment.deleteMany();
       await tx.staffPayment.deleteMany();
-      await tx.member.deleteMany();
-      await tx.staff.deleteMany();
       await tx.income.deleteMany();
       await tx.expense.deleteMany();
+      await tx.member.deleteMany();
+      await tx.staff.deleteMany();
       await tx.customCategory.deleteMany();
       await tx.setting.deleteMany();
 
-      // 2. Restore Custom Categories
+      // 2. Restore Custom Categories (includes DIVISION, INCOME, EXPENSE)
       for (const cat of customCategories) {
         await tx.customCategory.create({
           data: {
@@ -126,10 +143,18 @@ router.post('/restore', authMiddleware, async (req, res) => {
             name: m.name,
             address: m.address || '',
             phone: m.phone || '',
+            job: m.job || null,
+            division: m.division || null,
+            idNumber: m.idNumber || null,
+            hasFamily: Boolean(m.hasFamily),
+            adultsCount: parseInt(m.adultsCount) || 0,
+            childrenCount: parseInt(m.childrenCount) || 0,
+            familyDetails: m.familyDetails || null,
             joiningDate: m.joiningDate ? new Date(m.joiningDate) : new Date(),
             monthlyDonation: parseFloat(m.monthlyDonation) || 100,
             openingBalance: parseFloat(m.openingBalance) || 0,
             status: m.status || 'Active',
+            endDate: m.endDate ? new Date(m.endDate) : null,
             hasMadrasa: Boolean(m.hasMadrasa),
             madrasaChildrenCount: parseInt(m.madrasaChildrenCount) || 0,
             madrasaMonthlyFee: parseFloat(m.madrasaMonthlyFee) || 0,
@@ -163,7 +188,78 @@ router.post('/restore', authMiddleware, async (req, res) => {
         }
       }
 
-      // 5. Restore Staff & StaffPayments (mapping staff IDs)
+      // 5. Restore MadrasaStudents & MadrasaPayments (mapping student and member IDs)
+      const oldToNewStudentId = {};
+      const oldToNewMadrasaPaymentId = {};
+
+      for (const s of madrasaStudents) {
+        const mappedMemberId = s.memberId ? (oldToNewMemberId[s.memberId] || null) : null;
+        const createdStudent = await tx.madrasaStudent.create({
+          data: {
+            memberId: mappedMemberId,
+            parentName: s.parentName || null,
+            parentPhone: s.parentPhone || '',
+            address: s.address || null,
+            job: s.job || null,
+            division: s.division || null,
+            studentsCount: parseInt(s.studentsCount) || 1,
+            studentName: s.studentName || null,
+            admissionNo: s.admissionNo || null,
+            classLevel: s.classLevel || '',
+            monthlyFee: parseFloat(s.monthlyFee) || 200,
+            feePerStudent: parseFloat(s.feePerStudent) || 200,
+            openingBalance: parseFloat(s.openingBalance) || 0,
+            admissionDate: s.admissionDate ? new Date(s.admissionDate) : new Date(),
+            endDate: s.endDate ? new Date(s.endDate) : null,
+            status: s.status || 'Active',
+            notes: s.notes || null,
+            createdAt: s.createdAt ? new Date(s.createdAt) : new Date(),
+          }
+        });
+
+        oldToNewStudentId[s.id] = createdStudent.id;
+
+        if (s.payments && Array.isArray(s.payments)) {
+          for (const mp of s.payments) {
+            const createdMadrasaPayment = await tx.madrasaPayment.create({
+              data: {
+                studentId: createdStudent.id,
+                month: parseInt(mp.month) || 0,
+                year: parseInt(mp.year) || new Date().getFullYear(),
+                feeAmount: parseFloat(mp.feeAmount) || 0,
+                openingBalanceAmount: parseFloat(mp.openingBalanceAmount) || 0,
+                totalAmount: parseFloat(mp.totalAmount) || 0,
+                paymentMode: mp.paymentMode || 'Cash in Hand',
+                paymentDate: mp.paymentDate ? new Date(mp.paymentDate) : new Date(),
+                receiptNo: mp.receiptNo || null,
+                notes: mp.notes || null,
+                createdAt: mp.createdAt ? new Date(mp.createdAt) : new Date(),
+              }
+            });
+            oldToNewMadrasaPaymentId[mp.id] = createdMadrasaPayment.id;
+          }
+        }
+      }
+
+      // 6. Restore Food Duties (mapping memberId)
+      for (const fd of foodDuties) {
+        const mappedMemberId = fd.memberId ? (oldToNewMemberId[fd.memberId] || null) : null;
+        await tx.foodDuty.create({
+          data: {
+            memberId: mappedMemberId,
+            customName: fd.customName || null,
+            phone: fd.phone || null,
+            division: fd.division || null,
+            date: fd.date ? new Date(fd.date) : new Date(),
+            mealType: fd.mealType || 'All Day',
+            status: fd.status || 'Pending',
+            notes: fd.notes || null,
+            createdAt: fd.createdAt ? new Date(fd.createdAt) : new Date(),
+          }
+        });
+      }
+
+      // 7. Restore Staff & StaffPayments (mapping staff IDs)
       const oldToNewStaffId = {};
       const oldToNewStaffPaymentId = {};
 
@@ -203,10 +299,12 @@ router.post('/restore', authMiddleware, async (req, res) => {
         }
       }
 
-      // 6. Restore Incomes
+      // 8. Restore Incomes (mapping memberId, memberPaymentId, studentId, madrasaPaymentId)
       for (const inc of incomes) {
-        const mappedMemberId = inc.memberId ? oldToNewMemberId[inc.memberId] || null : null;
-        const mappedMemberPaymentId = inc.memberPaymentId ? oldToNewPaymentId[inc.memberPaymentId] || null : null;
+        const mappedMemberId = inc.memberId ? (oldToNewMemberId[inc.memberId] || null) : null;
+        const mappedMemberPaymentId = inc.memberPaymentId ? (oldToNewPaymentId[inc.memberPaymentId] || null) : null;
+        const mappedStudentId = inc.studentId ? (oldToNewStudentId[inc.studentId] || null) : null;
+        const mappedMadrasaPaymentId = inc.madrasaPaymentId ? (oldToNewMadrasaPaymentId[inc.madrasaPaymentId] || null) : null;
 
         await tx.income.create({
           data: {
@@ -219,18 +317,21 @@ router.post('/restore', authMiddleware, async (req, res) => {
             description: inc.description || '',
             customFields: inc.customFields || null,
             proofImage: inc.proofImage || null,
+            receiptNo: inc.receiptNo || null,
             memberId: mappedMemberId,
             memberPaymentId: mappedMemberPaymentId,
+            studentId: mappedStudentId,
+            madrasaPaymentId: mappedMadrasaPaymentId,
             date: inc.date ? new Date(inc.date) : new Date(),
             createdAt: inc.createdAt ? new Date(inc.createdAt) : new Date(),
           }
         });
       }
 
-      // 7. Restore Expenses
+      // 9. Restore Expenses (mapping staffId, staffPaymentId)
       for (const exp of expenses) {
-        const mappedStaffId = exp.staffId ? oldToNewStaffId[exp.staffId] || null : null;
-        const mappedStaffPaymentId = exp.staffPaymentId ? oldToNewStaffPaymentId[exp.staffPaymentId] || null : null;
+        const mappedStaffId = exp.staffId ? (oldToNewStaffId[exp.staffId] || null) : null;
+        const mappedStaffPaymentId = exp.staffPaymentId ? (oldToNewStaffPaymentId[exp.staffPaymentId] || null) : null;
 
         await tx.expense.create({
           data: {
@@ -242,6 +343,7 @@ router.post('/restore', authMiddleware, async (req, res) => {
             description: exp.description || '',
             customFields: exp.customFields || null,
             proofImage: exp.proofImage || null,
+            receiptNo: exp.receiptNo || null,
             staffId: mappedStaffId,
             staffPaymentId: mappedStaffPaymentId,
             date: exp.date ? new Date(exp.date) : new Date(),
@@ -256,6 +358,8 @@ router.post('/restore', authMiddleware, async (req, res) => {
       message: 'Database backup successfully restored!',
       restoredCounts: {
         members: members.length,
+        madrasaStudents: madrasaStudents.length,
+        foodDuties: foodDuties.length,
         staff: staff.length,
         incomes: incomes.length,
         expenses: expenses.length,

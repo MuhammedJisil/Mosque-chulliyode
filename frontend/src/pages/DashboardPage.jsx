@@ -82,19 +82,25 @@ export default function DashboardPage({ onNavigate }) {
         toast.info(`No transactions found for ${periodLabel}. An empty statement will be generated.`);
       }
 
-      const columns = ['Date', 'Particulars', 'Category', 'Mode', 'Income (₹)', 'Expense (₹)', 'Balance (₹)'];
-      const rows = ledger.map(entry => {
-        let particulars = entry.title || (
-          entry.type === 'INCOME'
-            ? (entry.donorName || entry.description || entry.category || 'Income')
-            : (entry.purpose ? (entry.paidTo ? `${entry.purpose} (${entry.paidTo})` : entry.purpose) : (entry.paidTo || entry.category || 'Expense'))
-        );
-        if (particulars) {
-          particulars = particulars.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() || particulars;
+      const columns = ['#', 'Date', 'Member / Party Name', 'Particulars / Description', 'Category', 'Mode', 'Income (₹)', 'Expense (₹)', 'Balance (₹)'];
+      const rows = ledger.map((entry, idx) => {
+        const partyName = entry.type === 'INCOME'
+          ? (entry.donorName || '-')
+          : (entry.paidTo || '-');
+
+        let particularsDesc = entry.type === 'INCOME'
+          ? (entry.description || entry.category || '-')
+          : (entry.purpose ? (entry.description ? `${entry.purpose} - ${entry.description}` : entry.purpose) : (entry.description || entry.category || '-'));
+
+        if (particularsDesc) {
+          particularsDesc = particularsDesc.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() || particularsDesc;
         }
+
         return [
+          idx + 1,
           formatDateDDMMYYYY(entry.date),
-          particulars,
+          partyName,
+          particularsDesc,
           entry.category || '-',
           entry.paymentMode || 'Cash',
           entry.type === 'INCOME' ? fmtPdfAmount(entry.incomeAmount) : '-',
@@ -105,8 +111,8 @@ export default function DashboardPage({ onNavigate }) {
 
       const summaryRows = [
         { label: 'Opening Balance (Prior to Period):', value: fmtPdfAmount(summary.openingBalance), bold: true },
-        { label: 'Total Income (This Period):', value: `+ ${fmtPdfAmount(summary.totalIncome)}`, bold: true, highlight: true },
-        { label: 'Total Expense (This Period):', value: `- ${fmtPdfAmount(summary.totalExpense)}`, bold: true },
+        { label: 'Total Income (This Period):', value: `+${fmtPdfAmount(summary.totalIncome)}`, bold: true, highlight: true },
+        { label: 'Total Expense (This Period):', value: `-${fmtPdfAmount(summary.totalExpense)}`, bold: true },
         { label: 'Net Closing Balance:', value: fmtPdfAmount(summary.closingBalance), bold: true, highlight: true },
       ];
 
@@ -117,6 +123,8 @@ export default function DashboardPage({ onNavigate }) {
         columns,
         rows,
         summaryRows,
+        orientation: 'landscape',
+        includeSlNo: false,
         fileName: `masjid_al_noor_ledger_${periodLabel.toLowerCase().replace(/[^a-z0-9]/g, '_')}.pdf`
       });
 
