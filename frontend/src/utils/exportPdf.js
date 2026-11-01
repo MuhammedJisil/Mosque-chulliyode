@@ -40,8 +40,10 @@ export const fmtPdfAmount = (num) =>
  * e.g. "NAME (Parent: NAME)" -> "NAME"
  */
 export const cleanDonorName = (name) => {
-  if (!name || typeof name !== 'string') return name || '-';
+  if (name === '' || name === null || name === undefined) return '';
+  if (typeof name !== 'string') return name;
   const trimmed = name.trim();
+  if (trimmed === '') return '';
   const dupMatch = trimmed.match(/^(.+?)\s*\([Pp]arent:\s*\1\s*\)$/i);
   if (dupMatch) return dupMatch[1].trim();
   const parentMatch = trimmed.match(/^(.*?)\s*\([Pp]arent:\s*(.*?)\)$/i);
@@ -327,7 +329,7 @@ export const exportFamilySurveyPdf = async ({
   ]);
 
   const safeRows = rows.map(row =>
-    row.map(cell => (typeof cell === 'string' ? safe(cleanDonorName(cell)) : cell))
+    row.map(cell => (typeof cell === 'string' ? (cell === '' ? '' : safe(cleanDonorName(cell))) : cell))
   );
 
   doc.autoTable({
@@ -474,7 +476,7 @@ export const exportMadrasaSurveyPdf = async ({
   });
 
   const safeRows = rows.map(row =>
-    row.map(cell => (typeof cell === 'string' ? safe(cleanDonorName(cell)) : cell))
+    row.map(cell => (typeof cell === 'string' ? (cell === '' ? '' : safe(cleanDonorName(cell))) : cell))
   );
 
   doc.autoTable({

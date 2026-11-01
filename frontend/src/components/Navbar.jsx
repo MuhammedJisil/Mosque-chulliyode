@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { Sun, Moon, LogOut, Shield, Menu, Database } from 'lucide-react';
+import { Sun, Moon, LogOut, Shield, Menu, Database, KeyRound, Lock, Eye } from 'lucide-react';
 import BackupRestoreModal from './BackupRestoreModal';
+import SecuritySettingsModal from './SecuritySettingsModal';
 
 export default function Navbar({ onToggleSidebar }) {
   const { admin, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [showBackupModal, setShowBackupModal] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+
+  const isViewer = admin?.role === 'viewer';
 
   return (
     <>
@@ -43,16 +47,39 @@ export default function Navbar({ onToggleSidebar }) {
 
         {/* Right Actions */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Backup & Restore Data */}
-          <button
-            type="button"
-            onClick={() => setShowBackupModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/60 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all text-xs font-semibold"
-            title="Backup & Restore Data"
-          >
-            <Database className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span className="hidden sm:inline">Backup & Restore</span>
-          </button>
+          {/* Main Admin Only: Backup & Restore */}
+          {!isViewer && (
+            <button
+              type="button"
+              onClick={() => setShowBackupModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/60 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all text-xs font-semibold"
+              title="Backup & Restore Data"
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden sm:inline">Backup & Restore</span>
+            </button>
+          )}
+
+          {/* Main Admin Only: Security & Password Settings */}
+          {!isViewer && (
+            <button
+              type="button"
+              onClick={() => setShowSecurityModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800/80 bg-amber-50/60 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-all text-xs font-semibold"
+              title="Security & User Management"
+            >
+              <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span className="hidden sm:inline">Security & Users</span>
+            </button>
+          )}
+
+          {/* Viewer Read Only Pill */}
+          {isViewer && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-blue-200 dark:border-blue-800/80 bg-blue-50/70 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 text-xs font-semibold">
+              <Eye className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Read-Only Viewer</span>
+            </div>
+          )}
 
           {/* Theme Toggle */}
           <button
@@ -94,6 +121,11 @@ export default function Navbar({ onToggleSidebar }) {
     <BackupRestoreModal
       isOpen={showBackupModal}
       onClose={() => setShowBackupModal(false)}
+    />
+
+    <SecuritySettingsModal
+      isOpen={showSecurityModal}
+      onClose={() => setShowSecurityModal(false)}
     />
   </>
 );

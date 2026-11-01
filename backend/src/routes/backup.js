@@ -5,6 +5,9 @@ const authMiddleware = require('../middleware/auth');
 
 // Export all data as a backup JSON
 router.get('/export', authMiddleware, async (req, res) => {
+  if (req.admin && req.admin.role === 'viewer') {
+    return res.status(403).json({ success: false, message: 'Access denied. View-only users cannot export or download database backups.' });
+  }
   try {
     const [
       customCategories,

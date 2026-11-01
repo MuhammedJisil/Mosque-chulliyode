@@ -28,6 +28,7 @@ import {
   Receipt
 } from 'lucide-react';
 import { api } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import DivisionDropdown from '../components/DivisionDropdown';
 import PdfOrientationModal from '../components/PdfOrientationModal';
 import { exportToPdf, exportMadrasaSurveyPdf, cleanDonorName } from '../utils/exportPdf';
@@ -43,6 +44,8 @@ const MONTH_NAMES = [
 ];
 
 export default function MadrasaPage() {
+  const { admin } = useAuth();
+  const isViewer = admin?.role === 'viewer';
   const { toast } = useToast();
 
   const [students, setStudents] = useState([]);
@@ -702,13 +705,15 @@ export default function MadrasaPage() {
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
             <span className="hidden sm:inline">Excel</span>
           </button>
-          <button
-            onClick={handleOpenAddModal}
-            className="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Madrasa Entry</span>
-          </button>
+          {!isViewer && (
+            <button
+              onClick={handleOpenAddModal}
+              className="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Madrasa Entry</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -898,20 +903,24 @@ export default function MadrasaPage() {
                     >
                       <Info className="w-4 h-4" />
                     </button>
-                    <button
-                      onClick={() => handleOpenEdit(s)}
-                      className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                      title="Edit"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(s.id)}
-                      className="p-1.5 text-rose-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {!isViewer && (
+                      <>
+                        <button
+                          onClick={() => handleOpenEdit(s)}
+                          className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                          title="Edit"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(s.id)}
+                          className="p-1.5 text-rose-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -975,12 +984,14 @@ export default function MadrasaPage() {
                         <MessageCircle className="w-4 h-4" />
                       </button>
                     )}
-                    <button
-                      onClick={() => handleOpenPayment(s)}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-                    >
-                      Pay Fee
-                    </button>
+                    {!isViewer && (
+                      <button
+                        onClick={() => handleOpenPayment(s)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                      >
+                        Pay Fee
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1146,12 +1157,21 @@ export default function MadrasaPage() {
 
                       {/* Record Payment */}
                       <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => handleOpenPayment(s)}
-                          className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors"
-                        >
-                          Pay Fee
-                        </button>
+                        {!isViewer ? (
+                          <button
+                            onClick={() => handleOpenPayment(s)}
+                            className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors"
+                          >
+                            Pay Fee
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleOpenHistory(s)}
+                            className="px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
+                          >
+                            History
+                          </button>
+                        )}
                       </td>
 
                       {/* Actions */}
@@ -1171,20 +1191,24 @@ export default function MadrasaPage() {
                           >
                             <History className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleOpenEdit(s)}
-                            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                            title="Edit"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(s.id)}
-                            className="p-1.5 text-rose-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {!isViewer && (
+                            <>
+                              <button
+                                onClick={() => handleOpenEdit(s)}
+                                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                                title="Edit"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(s.id)}
+                                className="p-1.5 text-rose-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1821,15 +1845,17 @@ export default function MadrasaPage() {
                           ₹{g.totalAmount.toLocaleString('en-IN')}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRevertPayment(g.id, g.totalAmount, g.label)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-rose-600 hover:text-white hover:bg-rose-600 dark:text-rose-400 dark:hover:text-white dark:hover:bg-rose-600 rounded-xl transition-all border border-rose-200 dark:border-rose-900/40 text-xs font-bold shadow-xs active:scale-95"
-                        title="Revert Payment & Delete Income Record"
-                      >
-                        <Undo2 className="w-3.5 h-3.5" />
-                        <span>Revert</span>
-                      </button>
+                      {!isViewer && (
+                        <button
+                          type="button"
+                          onClick={() => handleRevertPayment(g.id, g.totalAmount, g.label)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-rose-600 hover:text-white hover:bg-rose-600 dark:text-rose-400 dark:hover:text-white dark:hover:bg-rose-600 rounded-xl transition-all border border-rose-200 dark:border-rose-900/40 text-xs font-bold shadow-xs active:scale-95"
+                          title="Revert Payment & Delete Income Record"
+                        >
+                          <Undo2 className="w-3.5 h-3.5" />
+                          <span>Revert</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -2063,7 +2089,7 @@ export default function MadrasaPage() {
                   </button>
                 )}
 
-                {(detailStudent.dueMonthsCount > 0 || (detailStudent.netOpeningBalanceDue || 0) > 0) && (
+                {!isViewer && (detailStudent.dueMonthsCount > 0 || (detailStudent.netOpeningBalanceDue || 0) > 0) && (
                   <button
                     type="button"
                     onClick={() => {

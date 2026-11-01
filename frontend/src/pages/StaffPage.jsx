@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
 import { STAFF_CATEGORIES, PAYMENT_MODES, MONTH_NAMES } from '../utils/categoriesData';
 import { useToast } from '../context/ToastContext';
@@ -26,6 +27,8 @@ import {
 } from 'lucide-react';
 
 export default function StaffPage() {
+  const { admin } = useAuth();
+  const isViewer = admin?.role === 'viewer';
   const { toast } = useToast();
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -348,13 +351,15 @@ export default function StaffPage() {
             <Download className="w-4 h-4 text-emerald-600" />
             <span className="hidden sm:inline">Excel</span>
           </button>
-          <button
-            onClick={handleOpenAdd}
-            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-md shadow-emerald-600/25 flex items-center gap-1.5 transition-transform active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Staff</span>
-          </button>
+          {!isViewer && (
+            <button
+              onClick={handleOpenAdd}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-md shadow-emerald-600/25 flex items-center gap-1.5 transition-transform active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Staff</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -453,20 +458,22 @@ export default function StaffPage() {
 
                   {/* Compact Action Icons Bar */}
                   <div className="flex items-center gap-1">
-                    {/* Pay Salary Button (Disabled if already paid up to date) */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenPayout(s)}
-                      disabled={!hasPending}
-                      className={`p-2 rounded-xl transition-all ${
-                        hasPending
-                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed opacity-60'
-                      }`}
-                      title={hasPending ? 'Pay Salary (Sync to Expense)' : 'Salary is up to date'}
-                    >
-                      <CreditCard className="w-4 h-4" />
-                    </button>
+                    {/* Pay Salary Button (Main Admin only) */}
+                    {!isViewer && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPayout(s)}
+                        disabled={!hasPending}
+                        className={`p-2 rounded-xl transition-all ${
+                          hasPending
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed opacity-60'
+                        }`}
+                        title={hasPending ? 'Pay Salary (Sync to Expense)' : 'Salary is up to date'}
+                      >
+                        <CreditCard className="w-4 h-4" />
+                      </button>
+                    )}
 
                     {/* Salary History */}
                     <button
@@ -478,15 +485,17 @@ export default function StaffPage() {
                       <History className="w-4 h-4" />
                     </button>
 
-                    {/* Edit Staff */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEdit(s)}
-                      className="p-2 rounded-xl text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                      title="Edit Staff"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
+                    {/* Edit Staff (Main Admin only) */}
+                    {!isViewer && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEdit(s)}
+                        className="p-2 rounded-xl text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                        title="Edit Staff"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -644,29 +653,39 @@ export default function StaffPage() {
 
                       {/* Disburse Salary Button */}
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenPayout(s)}
-                          disabled={!hasPending}
-                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+                        {!isViewer ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPayout(s)}
+                            disabled={!hasPending}
+                            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+                              hasPending
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60'
+                            }`}
+                            title={hasPending ? 'Disburse Salary (Sync to Expenses)' : 'All salaries paid up to date'}
+                          >
+                            {hasPending ? (
+                              <>
+                                <CreditCard className="w-3.5 h-3.5" />
+                                <span>Pay Salary</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Paid</span>
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-medium ${
                             hasPending
-                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60'
-                          }`}
-                          title={hasPending ? 'Disburse Salary (Sync to Expenses)' : 'All salaries paid up to date'}
-                        >
-                          {hasPending ? (
-                            <>
-                              <CreditCard className="w-3.5 h-3.5" />
-                              <span>Pay Salary</span>
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Paid</span>
-                            </>
-                          )}
-                        </button>
+                              ? 'text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40'
+                              : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40'
+                          }`}>
+                            {hasPending ? 'Pending' : 'Paid'}
+                          </span>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
@@ -678,20 +697,24 @@ export default function StaffPage() {
                           >
                             <History className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => handleOpenEdit(s)}
-                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors"
-                            title="Edit Staff Member"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(s.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
-                            title="Delete Staff"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {!isViewer && (
+                            <>
+                              <button
+                                onClick={() => handleOpenEdit(s)}
+                                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors"
+                                title="Edit Staff Member"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(s.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                                title="Delete Staff"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1043,14 +1066,16 @@ export default function StaffPage() {
                             </div>
                           )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRevertSalaryPayment(p.id, p.amount, MONTH_NAMES[p.month - 1], p.year)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                          title="Revert / Delete this Salary Payout"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                        </button>
+                        {!isViewer && (
+                          <button
+                            type="button"
+                            onClick={() => handleRevertSalaryPayment(p.id, p.amount, MONTH_NAMES[p.month - 1], p.year)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                            title="Revert / Delete this Salary Payout"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

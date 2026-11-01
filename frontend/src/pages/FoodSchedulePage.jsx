@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import { openWhatsAppFoodReminder } from '../utils/whatsapp';
 import { exportToPdf } from '../utils/exportPdf';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
@@ -38,6 +39,8 @@ import {
 } from 'lucide-react';
 
 export default function FoodSchedulePage() {
+  const { admin } = useAuth();
+  const isViewer = admin?.role === 'viewer';
   const { toast } = useToast();
   const [duties, setDuties] = useState([]);
   const [todayDuties, setTodayDuties] = useState([]);
@@ -514,21 +517,25 @@ export default function FoodSchedulePage() {
             <Download className="w-4 h-4 text-rose-600" />
             <span className="hidden sm:inline">PDF Roster</span>
           </button>
-          <button
-            onClick={handleOpenGenerate}
-            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-md shadow-blue-600/25 flex items-center gap-1.5 transition-transform active:scale-95"
-            title="Auto-generate rotation roster from members"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>Generate Roster</span>
-          </button>
-          <button
-            onClick={handleOpenAdd}
-            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-md shadow-emerald-600/25 flex items-center gap-1.5 transition-transform active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Turn</span>
-          </button>
+          {!isViewer && (
+            <>
+              <button
+                onClick={handleOpenGenerate}
+                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-md shadow-blue-600/25 flex items-center gap-1.5 transition-transform active:scale-95"
+                title="Auto-generate rotation roster from members"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Generate Roster</span>
+              </button>
+              <button
+                onClick={handleOpenAdd}
+                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-md shadow-emerald-600/25 flex items-center gap-1.5 transition-transform active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Turn</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -622,28 +629,32 @@ export default function FoodSchedulePage() {
                         <span>Send WhatsApp</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleStatusChange(td, isCompleted ? 'Pending' : 'Completed')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                          isCompleted
-                            ? 'bg-white/20 hover:bg-white/30 text-white border-white/30'
-                            : 'bg-emerald-400 hover:bg-emerald-300 text-emerald-950 border-emerald-300'
-                        }`}
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>{isCompleted ? 'Completed ✓' : 'Mark Done'}</span>
-                      </button>
+                      {!isViewer && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleStatusChange(td, isCompleted ? 'Pending' : 'Completed')}
+                            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                              isCompleted
+                                ? 'bg-white/20 hover:bg-white/30 text-white border-white/30'
+                                : 'bg-emerald-400 hover:bg-emerald-300 text-emerald-950 border-emerald-300'
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>{isCompleted ? 'Completed ✓' : 'Mark Done'}</span>
+                          </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleOpenSwap(td)}
-                        className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-semibold transition-all"
-                        title="Swap with another date"
-                      >
-                        <ArrowLeftRight className="w-3.5 h-3.5" />
-                        <span>Swap Turn</span>
-                      </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSwap(td)}
+                            className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-semibold transition-all"
+                            title="Swap with another date"
+                          >
+                            <ArrowLeftRight className="w-3.5 h-3.5" />
+                            <span>Swap Turn</span>
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
@@ -735,15 +746,17 @@ export default function FoodSchedulePage() {
                         <span>Remind for Tomorrow</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleOpenSwap(td)}
-                        className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-semibold transition-all"
-                        title="Swap with another date"
-                      >
-                        <ArrowLeftRight className="w-3.5 h-3.5" />
-                        <span>Swap Turn</span>
-                      </button>
+                      {!isViewer && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSwap(td)}
+                          className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-semibold transition-all"
+                          title="Swap with another date"
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5" />
+                          <span>Swap Turn</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -912,35 +925,37 @@ export default function FoodSchedulePage() {
                       <span>WhatsApp</span>
                     </button>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenSwap(d)}
-                        className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg text-xs font-semibold flex items-center gap-1 border border-blue-200 dark:border-blue-900/60"
-                        title="Swap date with another house"
-                      >
-                        <ArrowLeftRight className="w-3.5 h-3.5" />
-                        <span className="text-[10px]">Swap</span>
-                      </button>
+                    {!isViewer && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSwap(d)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg text-xs font-semibold flex items-center gap-1 border border-blue-200 dark:border-blue-900/60"
+                          title="Swap date with another house"
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5" />
+                          <span className="text-[10px]">Swap</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEdit(d)}
-                        className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg"
-                        title="Edit date / details"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(d)}
+                          className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg"
+                          title="Edit date / details"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(d.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg"
-                        title="Delete duty"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(d.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg"
+                          title="Delete duty"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -1057,16 +1072,22 @@ export default function FoodSchedulePage() {
 
                       {/* Status */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <select
-                          value={d.status}
-                          onChange={(e) => handleStatusChange(d, e.target.value)}
-                          className={`px-2 py-1 text-xs font-bold rounded-lg border focus:outline-none cursor-pointer ${getStatusBadge(d.status)}`}
-                        >
-                          <option value="Pending">Pending</option>
-                          <option value="Completed">Completed</option>
-                          <option value="Swapped">Swapped</option>
-                          <option value="Cancelled">Cancelled</option>
-                        </select>
+                        {!isViewer ? (
+                          <select
+                            value={d.status}
+                            onChange={(e) => handleStatusChange(d, e.target.value)}
+                            className={`px-2 py-1 text-xs font-bold rounded-lg border focus:outline-none cursor-pointer ${getStatusBadge(d.status)}`}
+                          >
+                            <option value="Pending">Pending</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Swapped">Swapped</option>
+                            <option value="Cancelled">Cancelled</option>
+                          </select>
+                        ) : (
+                          <span className={`px-2.5 py-1 text-xs font-bold rounded-lg border inline-block ${getStatusBadge(d.status)}`}>
+                            {d.status}
+                          </span>
+                        )}
                       </td>
 
                       {/* WhatsApp Reminder Button */}
@@ -1084,34 +1105,44 @@ export default function FoodSchedulePage() {
 
                       {/* Swap Button */}
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenSwap(d)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold border border-blue-200 dark:border-blue-800/80 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 transition-colors shadow-xs"
-                          title="Move or swap this turn with another date"
-                        >
-                          <ArrowLeftRight className="w-3.5 h-3.5" />
-                          <span>Swap</span>
-                        </button>
+                        {!isViewer ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSwap(d)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold border border-blue-200 dark:border-blue-800/80 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 transition-colors shadow-xs"
+                            title="Move or swap this turn with another date"
+                          >
+                            <ArrowLeftRight className="w-3.5 h-3.5" />
+                            <span>Swap</span>
+                          </button>
+                        ) : (
+                          <span className="text-slate-400 text-xs">-</span>
+                        )}
                       </td>
 
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1">
-                          <button
-                            onClick={() => handleOpenEdit(d)}
-                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors"
-                            title="Edit Date or Details"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(d.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
-                            title="Delete Entry"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {!isViewer ? (
+                            <>
+                              <button
+                                onClick={() => handleOpenEdit(d)}
+                                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors"
+                                title="Edit Date or Details"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(d.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                                title="Delete Entry"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">View Only</span>
+                          )}
                         </div>
                       </td>
                     </tr>

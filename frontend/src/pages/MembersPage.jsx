@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
 import { openWhatsAppDueReminder } from '../utils/whatsapp';
 import { exportToPdf, exportFamilySurveyPdf } from '../utils/exportPdf';
@@ -41,6 +42,8 @@ import {
 } from 'lucide-react';
 
 export default function MembersPage() {
+  const { admin } = useAuth();
+  const isViewer = admin?.role === 'viewer';
   const { toast } = useToast();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -642,13 +645,15 @@ export default function MembersPage() {
             <Download className="w-4 h-4 text-emerald-600" />
             <span className="hidden sm:inline">Excel</span>
           </button>
-          <button
-            onClick={handleOpenAdd}
-            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-md shadow-emerald-600/25 flex items-center gap-1.5 transition-transform active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Member</span>
-          </button>
+          {!isViewer && (
+            <button
+              onClick={handleOpenAdd}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-md shadow-emerald-600/25 flex items-center gap-1.5 transition-transform active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Member</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -820,19 +825,21 @@ export default function MembersPage() {
                       <MessageCircle className="w-4 h-4" />
                     </button>
 
-                    {/* Pay Button (Always clickable for dues or advance payments) */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenPayment(m)}
-                      className={`p-2 rounded-xl transition-all ${
-                        hasDues
-                          ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-xs'
-                          : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100'
-                      }`}
-                      title={hasDues ? 'Record Payment' : 'Pay in advance'}
-                    >
-                      <CreditCard className="w-4 h-4" />
-                    </button>
+                    {/* Pay Button (Main Admin only) */}
+                    {!isViewer && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPayment(m)}
+                        className={`p-2 rounded-xl transition-all ${
+                          hasDues
+                            ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-xs'
+                            : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100'
+                        }`}
+                        title={hasDues ? 'Record Payment' : 'Pay in advance'}
+                      >
+                        <CreditCard className="w-4 h-4" />
+                      </button>
+                    )}
 
                     {/* History button */}
                     <button
@@ -854,25 +861,27 @@ export default function MembersPage() {
                       <Eye className="w-4 h-4" />
                     </button>
 
-                    {/* Edit button */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEdit(m)}
-                      className="p-2 rounded-xl text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                      title="Edit Member"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-
-                    {/* Delete button on mobile */}
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(m.id)}
-                      className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                      title="Delete Member"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {/* Edit & Delete buttons (Main Admin only) */}
+                    {!isViewer && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(m)}
+                          className="p-2 rounded-xl text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                          title="Edit Member"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(m.id)}
+                          className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                          title="Delete Member"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1091,25 +1100,38 @@ export default function MembersPage() {
                       {/* Record Payment Button (or Advance Payment + History / Revert) */}
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
                         <div className="inline-flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenPayment(m)}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
-                              hasDues
-                                ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 hover:bg-amber-100'
-                                : 'border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
-                            }`}
-                            title={hasDues ? 'Record Payment' : 'Pay upcoming months in advance'}
-                          >
-                            <CreditCard className="w-3.5 h-3.5" />
-                            <span>{hasDues ? 'Pay' : 'Advance'}</span>
-                          </button>
-                          {!hasDues && (
+                          {!isViewer ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPayment(m)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+                                  hasDues
+                                    ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 hover:bg-amber-100'
+                                    : 'border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                                }`}
+                                title={hasDues ? 'Record Payment' : 'Pay upcoming months in advance'}
+                              >
+                                <CreditCard className="w-3.5 h-3.5" />
+                                <span>{hasDues ? 'Pay' : 'Advance'}</span>
+                              </button>
+                              {!hasDues && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenHistory(m)}
+                                  className="px-2 py-1.5 rounded-xl text-[11px] text-emerald-600 hover:text-emerald-700 underline font-normal"
+                                  title="View History / Revert"
+                                >
+                                  History
+                                </button>
+                              )}
+                            </>
+                          ) : (
                             <button
                               type="button"
                               onClick={() => handleOpenHistory(m)}
-                              className="px-2 py-1.5 rounded-xl text-[11px] text-emerald-600 hover:text-emerald-700 underline font-normal"
-                              title="View History / Revert"
+                              className="px-2.5 py-1 rounded-xl text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-medium"
+                              title="View Payment History"
                             >
                               History
                             </button>
@@ -1133,20 +1155,24 @@ export default function MembersPage() {
                           >
                             <History className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => handleOpenEdit(m)}
-                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors"
-                            title="Edit Member"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(m.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
-                            title="Delete Member"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {!isViewer && (
+                            <>
+                              <button
+                                onClick={() => handleOpenEdit(m)}
+                                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors"
+                                title="Edit Member"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(m.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                                title="Delete Member"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1621,7 +1647,7 @@ export default function MembersPage() {
               </button>
 
               <div className="flex items-center gap-2">
-                {(detailMember.dueMonthsCount > 0 || (detailMember.netOpeningBalanceDue || 0) > 0) && (
+                {!isViewer && (detailMember.dueMonthsCount > 0 || (detailMember.netOpeningBalanceDue || 0) > 0) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1702,15 +1728,17 @@ export default function MembersPage() {
                           ₹{g.totalAmount.toLocaleString('en-IN')}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRevertPayment(g.id, g.totalAmount, g.label)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-rose-600 hover:text-white hover:bg-rose-600 dark:text-rose-400 dark:hover:text-white dark:hover:bg-rose-600 rounded-xl transition-all border border-rose-200 dark:border-rose-900/40 text-xs font-bold shadow-xs active:scale-95"
-                        title="Revert Payment (removes linked Income)"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Revert</span>
-                      </button>
+                      {!isViewer && (
+                        <button
+                          type="button"
+                          onClick={() => handleRevertPayment(g.id, g.totalAmount, g.label)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-rose-600 hover:text-white hover:bg-rose-600 dark:text-rose-400 dark:hover:text-white dark:hover:bg-rose-600 rounded-xl transition-all border border-rose-200 dark:border-rose-900/40 text-xs font-bold shadow-xs active:scale-95"
+                          title="Revert Payment (removes linked Income)"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Revert</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))
