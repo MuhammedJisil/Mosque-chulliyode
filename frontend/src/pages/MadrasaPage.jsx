@@ -30,7 +30,7 @@ import {
 import { api } from '../utils/api';
 import DivisionDropdown from '../components/DivisionDropdown';
 import PdfOrientationModal from '../components/PdfOrientationModal';
-import { exportToPdf } from '../utils/exportPdf';
+import { exportToPdf, exportMadrasaSurveyPdf, cleanDonorName } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import { PAYMENT_MODES } from '../utils/categoriesData';
@@ -67,6 +67,7 @@ export default function MadrasaPage() {
   const [detailStudent, setDetailStudent] = useState(null);
   const [detailYear, setDetailYear] = useState(new Date().getFullYear());
   const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfTarget, setPdfTarget] = useState(null); // 'fees' | 'survey'
 
   // Search inside Add/Edit modal for Mahallu Member
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
@@ -580,7 +581,7 @@ export default function MadrasaPage() {
   const handleExportPdf = (orientation = 'landscape') => {
     const columns = ['#', 'Parent / Member', 'Phone', 'Area / Division', 'Job', 'Students Count', 'Monthly Fee', 'Opening Balance', 'Due Months', 'Total Due (₹)'];
     const rows = displayedStudents.map((s, idx) => {
-      const parentName = s.parentName || s.member?.name || '-';
+      const parentName = cleanDonorName(s.parentName || s.member?.name || '-');
       const phone = s.parentPhone || s.member?.phone || '-';
       const division = s.division || s.member?.division || '-';
       const job = s.job || s.member?.job || '-';
@@ -612,10 +613,28 @@ export default function MadrasaPage() {
     });
   };
 
+  // Dedicated Madrasa Students & Family Survey PDF Export (with blank Amount column)
+  const handleExportSurveyPdf = (orientation = 'landscape') => {
+    exportMadrasaSurveyPdf({
+      students: displayedStudents,
+      division: divisionFilter !== 'All' ? divisionFilter : 'All Divisions / Areas',
+      orientation,
+      fileName: `Madrasa_Family_Survey_${divisionFilter !== 'All' ? divisionFilter.replace(/\s+/g, '_') : 'All'}.pdf`
+    });
+  };
+
+  const handleExecutePdfDownload = (orientation) => {
+    if (pdfTarget === 'survey') {
+      handleExportSurveyPdf(orientation);
+    } else {
+      handleExportPdf(orientation);
+    }
+  };
+
   // Export Excel
   const handleExportExcel = () => {
     const excelRows = displayedStudents.map(s => ({
-      'Parent / Member': s.parentName || s.member?.name || '',
+      'Parent / Member': cleanDonorName(s.parentName || s.member?.name || ''),
       'Phone': s.parentPhone || s.member?.phone || '',
       'Area / Division': s.division || s.member?.division || '',
       'Job / Occupation': s.job || s.member?.job || '',
@@ -660,7 +679,15 @@ export default function MadrasaPage() {
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={() => setShowPdfModal(true)}
+            onClick={() => { setPdfTarget('survey'); setShowPdfModal(true); }}
+            className="p-2 sm:px-3 sm:py-2 rounded-xl border border-blue-200 dark:border-blue-800/60 bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/40 shadow-xs flex items-center gap-1.5 transition-all"
+            title="Download Madrasa Survey & Census PDF Report"
+          >
+            <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <span className="hidden sm:inline">Madrasa Survey PDF</span>
+          </button>
+          <button
+            onClick={() => { setPdfTarget('fees'); setShowPdfModal(true); }}
             className="p-2 sm:px-3 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 shadow-xs flex items-center gap-1.5"
             title="Download PDF Report"
           >
@@ -2067,8 +2094,8 @@ export default function MadrasaPage() {
       <PdfOrientationModal
         isOpen={showPdfModal}
         onClose={() => setShowPdfModal(false)}
-        onSelect={handleExportPdf}
-        title="Download Madrasa Fee Due Report PDF"
+        onSelect={handleExecutePdfDownload}
+        title={pdfTarget === 'survey' ? 'Download Madrasa Family Survey Report PDF' : 'Download Madrasa Fee Due Report PDF'}
         recommended="landscape"
       />
     </div>

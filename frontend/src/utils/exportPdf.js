@@ -35,6 +35,26 @@ const loadNotoSansFont = async (doc) => {
 export const fmtPdfAmount = (num) =>
   '₹' + Number(num || 0).toLocaleString('en-IN');
 
+/**
+ * Clean donor / party name to avoid duplicate parent formatting
+ * e.g. "NAME (Parent: NAME)" -> "NAME"
+ */
+export const cleanDonorName = (name) => {
+  if (!name || typeof name !== 'string') return name || '-';
+  const trimmed = name.trim();
+  const dupMatch = trimmed.match(/^(.+?)\s*\([Pp]arent:\s*\1\s*\)$/i);
+  if (dupMatch) return dupMatch[1].trim();
+  const parentMatch = trimmed.match(/^(.*?)\s*\([Pp]arent:\s*(.*?)\)$/i);
+  if (parentMatch) {
+    const p1 = parentMatch[1].trim();
+    const p2 = parentMatch[2].trim();
+    if (p1.toLowerCase() === p2.toLowerCase()) {
+      return p1;
+    }
+  }
+  return trimmed;
+};
+
 export const exportToPdf = async ({
   title = 'Masjid al noor Financial Statement',
   subtitle = '',
@@ -87,23 +107,23 @@ export const exportToPdf = async ({
 
   // Main title
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(18);
+  doc.setFontSize(20);
   doc.setTextColor(255, 255, 255);
   doc.text('Masjid al noor', pageW / 2, 30, { align: 'center' });
 
   // Subtitle
   doc.setFont(fontName, 'normal');
-  doc.setFontSize(10);
+  doc.setFontSize(10.5);
   doc.setTextColor(220, 252, 231);
   doc.text('sirajul huda sangam chulliyode', pageW / 2, 48, { align: 'center' });
 
   // Report type label
-  doc.setFontSize(11);
+  doc.setFontSize(12);
   doc.setTextColor(236, 253, 245);
   doc.text(safe(title).toUpperCase(), pageW / 2, 66, { align: 'center' });
 
   // ── Metadata ────────────────────────────────────────────────────────────────
-  doc.setFontSize(9);
+  doc.setFontSize(10);
   doc.setTextColor(71, 85, 105);
   const printDate = new Date().toLocaleDateString('en-GB', {
     day: '2-digit', month: 'short', year: 'numeric',
@@ -117,11 +137,11 @@ export const exportToPdf = async ({
 
   // ── Table with Clear Grid Borders and Legible Font Size ─────────────────────
   const safeRows = finalRows.map(row =>
-    row.map(cell => (typeof cell === 'string' ? safe(cell) : cell))
+    row.map(cell => (typeof cell === 'string' ? safe(cleanDonorName(cell)) : cell))
   );
 
   const isWide = finalColumns.length > 7;
-  const tableFontSize = finalOrientation === 'portrait' ? (isWide ? 8 : 8.5) : (isWide ? 8.5 : 9.5);
+  const tableFontSize = finalOrientation === 'portrait' ? (isWide ? 9.5 : 10) : (isWide ? 10 : 10.5);
   const tableHeadFontSize = tableFontSize + 1;
 
   doc.autoTable({
@@ -132,7 +152,7 @@ export const exportToPdf = async ({
     styles: {
       font: fontName,
       fontSize: tableFontSize,
-      cellPadding: finalOrientation === 'portrait' && isWide ? 3.5 : 4.5,
+      cellPadding: finalOrientation === 'portrait' && isWide ? 4 : 5,
       overflow: 'linebreak',
       textColor: [15, 23, 42],
       lineWidth: 0.6,
@@ -160,7 +180,7 @@ export const exportToPdf = async ({
     didDrawPage: () => {
       const str = `Page ${doc.internal.getNumberOfPages()}`;
       doc.setFont(fontName, 'normal');
-      doc.setFontSize(8);
+      doc.setFontSize(9);
       doc.setTextColor(148, 163, 184);
       doc.text(str, pageW / 2, pageH - 18, { align: 'center' });
     }
@@ -187,7 +207,7 @@ export const exportToPdf = async ({
     let sumY = finalY + 16;
     summaryRows.forEach(item => {
       doc.setFont(fontName, item.bold ? 'bold' : 'normal');
-      doc.setFontSize(8.5);
+      doc.setFontSize(9.5);
       doc.setTextColor(
         item.highlight ? 5 : 51,
         item.highlight ? 150 : 65,
@@ -208,7 +228,7 @@ export const exportToPdf = async ({
   }
 
   doc.setFont(fontName, 'normal');
-  doc.setFontSize(8.5);
+  doc.setFontSize(9.5);
   doc.setTextColor(100, 116, 139);
   doc.line(30, finalY + 30, 180, finalY + 30);
   doc.text('Prepared By (Staff / Admin)', 30, finalY + 45);
@@ -252,21 +272,21 @@ export const exportFamilySurveyPdf = async ({
   doc.rect(0, 0, pageW, 75, 'F');
 
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(18);
+  doc.setFontSize(20);
   doc.setTextColor(255, 255, 255);
   doc.text('Masjid al noor', pageW / 2, 28, { align: 'center' });
 
   doc.setFont(fontName, 'normal');
-  doc.setFontSize(10);
+  doc.setFontSize(10.5);
   doc.setTextColor(220, 252, 231);
   doc.text('sirajul huda sangam chulliyode', pageW / 2, 45, { align: 'center' });
 
-  doc.setFontSize(11);
+  doc.setFontSize(12);
   doc.setTextColor(236, 253, 245);
   doc.text('MAHALLU MEMBERS & FAMILY CENSUS SURVEY REPORT', pageW / 2, 63, { align: 'center' });
 
   // Metadata
-  doc.setFontSize(9);
+  doc.setFontSize(10);
   doc.setTextColor(71, 85, 105);
   const printDate = new Date().toLocaleDateString('en-GB', {
     day: '2-digit', month: 'short', year: 'numeric',
@@ -290,7 +310,8 @@ export const exportFamilySurveyPdf = async ({
     'Job / Profession',
     'Adults',
     'Children',
-    'Family Details & Ages'
+    'Family Details & Ages',
+    'Amount'
   ];
 
   const rows = members.map((m, idx) => [
@@ -301,11 +322,12 @@ export const exportFamilySurveyPdf = async ({
     m.job || '-',
     m.hasFamily ? (m.adultsCount || 0) : '-',
     m.hasFamily ? (m.childrenCount || 0) : '-',
-    m.familyDetails || (m.hasFamily ? 'Family registered' : 'Single Member')
+    m.familyDetails || (m.hasFamily ? 'Family registered' : 'Single Member'),
+    '' // Blank amount column for manual entry after taking printout
   ]);
 
   const safeRows = rows.map(row =>
-    row.map(cell => (typeof cell === 'string' ? safe(cell) : cell))
+    row.map(cell => (typeof cell === 'string' ? safe(cleanDonorName(cell)) : cell))
   );
 
   doc.autoTable({
@@ -315,8 +337,8 @@ export const exportFamilySurveyPdf = async ({
     theme: 'grid',
     styles: {
       font: fontName,
-      fontSize: finalOrientation === 'portrait' ? 8 : 9,
-      cellPadding: 4,
+      fontSize: finalOrientation === 'portrait' ? 9.5 : 10.5,
+      cellPadding: 4.5,
       overflow: 'linebreak',
       textColor: [15, 23, 42],
       lineWidth: 0.6,
@@ -327,7 +349,7 @@ export const exportFamilySurveyPdf = async ({
       textColor: [255, 255, 255],
       font: fontName,
       fontStyle: 'bold',
-      fontSize: finalOrientation === 'portrait' ? 8.5 : 9.5,
+      fontSize: finalOrientation === 'portrait' ? 10.5 : 11.5,
       halign: 'left',
       lineWidth: 0.6,
       lineColor: [6, 78, 59]
@@ -337,7 +359,8 @@ export const exportFamilySurveyPdf = async ({
     columnStyles: {
       0: { cellWidth: 26, halign: 'center' },
       5: { cellWidth: 36, halign: 'center' },
-      6: { cellWidth: 38, halign: 'center' }
+      6: { cellWidth: 38, halign: 'center' },
+      8: { cellWidth: 55, halign: 'center' }
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252]
@@ -346,7 +369,153 @@ export const exportFamilySurveyPdf = async ({
     didDrawPage: () => {
       const str = `Page ${doc.internal.getNumberOfPages()}`;
       doc.setFont(fontName, 'normal');
-      doc.setFontSize(8);
+      doc.setFontSize(9);
+      doc.setTextColor(148, 163, 184);
+      doc.text(str, pageW / 2, pageH - 15, { align: 'center' });
+    }
+  });
+
+  doc.save(fileName);
+};
+
+/**
+ * Dedicated Madrasa Students & Family Survey PDF Export
+ * Includes blank 'Amount' column for handwriting upon printout.
+ */
+export const exportMadrasaSurveyPdf = async ({
+  students = [],
+  division = 'All Divisions',
+  fileName = 'madrasa_family_survey_report.pdf',
+  orientation = 'landscape'
+}) => {
+  const finalOrientation = orientation === 'portrait' ? 'portrait' : 'landscape';
+  const doc = new jsPDF({
+    orientation: finalOrientation,
+    unit: 'pt',
+    format: 'a4'
+  });
+
+  const fontLoaded = await loadNotoSansFont(doc);
+  const fontName = fontLoaded ? 'NotoSans' : 'helvetica';
+
+  const safe = (str) => {
+    if (typeof str !== 'string') return str;
+    return fontLoaded ? str : str.replace(/₹/g, 'Rs. ');
+  };
+
+  const pageW = doc.internal.pageSize.width;
+  const pageH = doc.internal.pageSize.height;
+
+  // Header banner
+  doc.setFillColor(5, 150, 105);
+  doc.rect(0, 0, pageW, 75, 'F');
+
+  doc.setFont(fontName, 'bold');
+  doc.setFontSize(20);
+  doc.setTextColor(255, 255, 255);
+  doc.text('Masjid al noor', pageW / 2, 28, { align: 'center' });
+
+  doc.setFont(fontName, 'normal');
+  doc.setFontSize(10.5);
+  doc.setTextColor(220, 252, 231);
+  doc.text('sirajul huda sangam chulliyode', pageW / 2, 45, { align: 'center' });
+
+  doc.setFontSize(12);
+  doc.setTextColor(236, 253, 245);
+  doc.text('MADRASA SIRAJUL HUDA - STUDENTS & FAMILY SURVEY REPORT', pageW / 2, 63, { align: 'center' });
+
+  // Metadata
+  doc.setFontSize(10);
+  doc.setTextColor(71, 85, 105);
+  const printDate = new Date().toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+  doc.text(`Generated On: ${printDate}`, 30, 95);
+  doc.text(`Division / Area: ${division}`, 30, 108);
+
+  const totalFamilies = students.length;
+  const totalKids = students.reduce((sum, s) => sum + (parseInt(s.studentsCount) || 1), 0);
+  doc.text(`Total Families: ${totalFamilies} | Enrolled Students: ${totalKids}`, pageW - 30, 95, { align: 'right' });
+
+  const columns = [
+    '#',
+    'Parent / Member Name',
+    'Phone',
+    'Division / Area',
+    'Job / Profession',
+    'Students',
+    'Student Name(s) / Class',
+    'Amount'
+  ];
+
+  const rows = students.map((s, idx) => {
+    const parentName = cleanDonorName(s.parentName || s.member?.name || '-');
+    const phone = s.parentPhone || s.member?.phone || '-';
+    const div = s.division || s.member?.division || '-';
+    const job = s.job || s.member?.job || '-';
+    const count = `${s.studentsCount || 1}`;
+    let studentDetails = (s.studentName && s.studentName.trim().toLowerCase() !== parentName.trim().toLowerCase())
+      ? s.studentName
+      : '-';
+    if (s.classLevel) {
+      studentDetails = studentDetails !== '-' ? `${studentDetails} (Class ${s.classLevel})` : `Class ${s.classLevel}`;
+    }
+    return [
+      idx + 1,
+      parentName,
+      phone,
+      div,
+      job,
+      count,
+      studentDetails,
+      '' // Blank Amount column for manual fill-in upon printout
+    ];
+  });
+
+  const safeRows = rows.map(row =>
+    row.map(cell => (typeof cell === 'string' ? safe(cleanDonorName(cell)) : cell))
+  );
+
+  doc.autoTable({
+    startY: 120,
+    head: [columns.map(c => safe(c))],
+    body: safeRows,
+    theme: 'grid',
+    styles: {
+      font: fontName,
+      fontSize: finalOrientation === 'portrait' ? 9.5 : 10.5,
+      cellPadding: 4.5,
+      overflow: 'linebreak',
+      textColor: [15, 23, 42],
+      lineWidth: 0.6,
+      lineColor: [140, 150, 165]
+    },
+    headStyles: {
+      fillColor: [6, 78, 59],
+      textColor: [255, 255, 255],
+      font: fontName,
+      fontStyle: 'bold',
+      fontSize: finalOrientation === 'portrait' ? 10.5 : 11.5,
+      halign: 'left',
+      lineWidth: 0.6,
+      lineColor: [6, 78, 59]
+    },
+    tableLineColor: [140, 150, 165],
+    tableLineWidth: 0.6,
+    columnStyles: {
+      0: { cellWidth: 26, halign: 'center' },
+      5: { cellWidth: 46, halign: 'center' },
+      7: { cellWidth: 60, halign: 'center' }
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252]
+    },
+    margin: { left: 30, right: 30 },
+    didDrawPage: () => {
+      const str = `Page ${doc.internal.getNumberOfPages()}`;
+      doc.setFont(fontName, 'normal');
+      doc.setFontSize(9);
       doc.setTextColor(148, 163, 184);
       doc.text(str, pageW / 2, pageH - 15, { align: 'center' });
     }
@@ -399,12 +568,12 @@ export const exportSingleIncomeReceiptPdf = async (item) => {
 
   // Header Mosque Details
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
   doc.text('Masjid al noor', 35, 42);
 
   doc.setFont(fontName, 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(9.5);
   doc.setTextColor(220, 252, 231);
   doc.text('sirajul huda sangam chulliyode • PIN: 679332', 35, 57);
 
@@ -412,7 +581,7 @@ export const exportSingleIncomeReceiptPdf = async (item) => {
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(pageW - 195, 28, 160, 24, 4, 4, 'F');
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(10.5);
   doc.setTextColor(5, 150, 105);
   doc.text('OFFICIAL INCOME RECEIPT', pageW - 115, 44, { align: 'center' });
 
@@ -423,7 +592,7 @@ export const exportSingleIncomeReceiptPdf = async (item) => {
 
   const receiptNo = item.receiptNo || `RCP-INC-${String(item.id).padStart(5, '0')}`;
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(10);
   doc.setTextColor(15, 23, 42);
   doc.text(`Receipt No: ${receiptNo}`, 35, 96);
   doc.text(`Date: ${dateFormatted}`, pageW - 35, 96, { align: 'right' });
@@ -433,12 +602,12 @@ export const exportSingleIncomeReceiptPdf = async (item) => {
   const drawRow = (label, value) => {
     if (!value && value !== 0) return;
     doc.setFont(fontName, 'normal');
-    doc.setFontSize(9);
+    doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
     doc.text(label, 35, curY);
 
     doc.setFont(fontName, 'bold');
-    doc.setFontSize(9.5);
+    doc.setFontSize(10.5);
     doc.setTextColor(15, 23, 42);
 
     const safeVal = safe(value);
@@ -450,9 +619,10 @@ export const exportSingleIncomeReceiptPdf = async (item) => {
     curY += rowH + 3;
   };
 
+  const rawDonorName = cleanDonorName(item.donorName || 'General Donor');
   const donorDisplayName = item.donorIdNumber
-    ? `${item.donorName || 'General Donor'} [ID: #${item.donorIdNumber}]`
-    : (item.donorName || 'General Donor');
+    ? `${rawDonorName} [ID: #${item.donorIdNumber}]`
+    : rawDonorName;
 
   drawRow('Received From (Donor):', donorDisplayName);
 
@@ -480,19 +650,19 @@ export const exportSingleIncomeReceiptPdf = async (item) => {
   doc.roundedRect(35, boxY, pageW - 70, 46, 6, 6, 'FD');
 
   doc.setFont(fontName, 'normal');
-  doc.setFontSize(8.5);
+  doc.setFontSize(9.5);
   doc.setTextColor(4, 120, 87);
   doc.text('AMOUNT RECEIVED:', 48, boxY + 18);
 
   const amtFormatted = safe(`₹${Number(item.amount || 0).toLocaleString('en-IN')}`);
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(17);
   doc.setTextColor(5, 150, 105);
   doc.text(amtFormatted, 48, boxY + 38);
 
   // Status Stamp inside Box
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(10.5);
   doc.setTextColor(4, 120, 87);
   doc.text('PAID & ACKNOWLEDGED ✓', pageW - 48, boxY + 28, { align: 'right' });
 
@@ -504,13 +674,13 @@ export const exportSingleIncomeReceiptPdf = async (item) => {
   doc.line(pageW - 190, sigY, pageW - 35, sigY);
 
   doc.setFont(fontName, 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(9);
   doc.setTextColor(100, 116, 139);
   doc.text('Treasurer / Authorized Signature', 35, sigY + 14);
   doc.text('Secretary / Seal', pageW - 35, sigY + 14, { align: 'right' });
 
   // Footer blessing
-  doc.setFontSize(7.5);
+  doc.setFontSize(8.5);
   doc.setTextColor(148, 163, 184);
   doc.text('May Allah accept this contribution and bless your family with barakah.', pageW / 2, pageH - 18, { align: 'center' });
 
@@ -561,12 +731,12 @@ export const exportSingleExpenseVoucherPdf = async (item) => {
   doc.roundedRect(21, 19, pageW - 42, 58, 5, 5, 'F');
 
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
   doc.text('Masjid al noor', 35, 42);
 
   doc.setFont(fontName, 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(9.5);
   doc.setTextColor(203, 213, 225);
   doc.text('sirajul huda sangam chulliyode • PIN: 679332', 35, 57);
 
@@ -574,7 +744,7 @@ export const exportSingleExpenseVoucherPdf = async (item) => {
   doc.setFillColor(225, 29, 72); // rose-600
   doc.roundedRect(pageW - 205, 28, 170, 24, 4, 4, 'F');
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(10.5);
   doc.setTextColor(255, 255, 255);
   doc.text('PAYMENT EXPENSE VOUCHER', pageW - 120, 44, { align: 'center' });
 
@@ -585,7 +755,7 @@ export const exportSingleExpenseVoucherPdf = async (item) => {
 
   const voucherNo = `VCH-EXP-${String(item.id).padStart(5, '0')}`;
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(10);
   doc.setTextColor(15, 23, 42);
   doc.text(`Voucher No: ${voucherNo}`, 35, 96);
   doc.text(`Date: ${dateFormatted}`, pageW - 35, 96, { align: 'right' });
@@ -595,12 +765,12 @@ export const exportSingleExpenseVoucherPdf = async (item) => {
   const drawRow = (label, value) => {
     if (!value && value !== 0) return;
     doc.setFont(fontName, 'normal');
-    doc.setFontSize(9);
+    doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
     doc.text(label, 35, curY);
 
     doc.setFont(fontName, 'bold');
-    doc.setFontSize(9.5);
+    doc.setFontSize(10.5);
     doc.setTextColor(15, 23, 42);
 
     const safeVal = safe(value);
@@ -637,19 +807,19 @@ export const exportSingleExpenseVoucherPdf = async (item) => {
   doc.roundedRect(35, boxY, pageW - 70, 46, 6, 6, 'FD');
 
   doc.setFont(fontName, 'normal');
-  doc.setFontSize(8.5);
+  doc.setFontSize(9.5);
   doc.setTextColor(190, 18, 60);
   doc.text('TOTAL AMOUNT DISBURSED:', 48, boxY + 18);
 
   const amtFormatted = safe(`₹${Number(item.amount || 0).toLocaleString('en-IN')}`);
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(17);
   doc.setTextColor(225, 29, 72);
   doc.text(amtFormatted, 48, boxY + 38);
 
   // Status Stamp inside Box
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(10.5);
   doc.setTextColor(190, 18, 60);
   doc.text('DISBURSED & VERIFIED ✓', pageW - 48, boxY + 28, { align: 'right' });
 
@@ -661,7 +831,7 @@ export const exportSingleExpenseVoucherPdf = async (item) => {
   doc.line(pageW - 190, sigY, pageW - 35, sigY);
 
   doc.setFont(fontName, 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(9);
   doc.setTextColor(100, 116, 139);
   doc.text('Passed & Prepared By', 35, sigY + 14);
   doc.text('Approved By (President / Treasurer)', pageW - 35, sigY + 14, { align: 'right' });

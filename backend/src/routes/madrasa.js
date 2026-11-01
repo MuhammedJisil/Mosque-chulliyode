@@ -557,6 +557,10 @@ router.post('/:id/pay', authMiddleware, async (req, res) => {
     const guardianPhone = student.parentPhone || student.member?.phone || '';
     const guardianDivision = student.division || student.member?.division || '';
 
+    const effectiveDonorName = (student.studentName && guardianName && student.studentName.trim().toLowerCase() !== guardianName.trim().toLowerCase())
+      ? `${student.studentName} (Parent: ${guardianName})`
+      : guardianName;
+
     // Multi-month payment handling
     if (Array.isArray(months) && months.length > 0) {
       // Validate none of these months are already paid
@@ -621,7 +625,7 @@ router.post('/:id/pay', authMiddleware, async (req, res) => {
 
         await tx.income.create({
           data: {
-            donorName: `${student.studentName} (Parent: ${guardianName})`,
+            donorName: effectiveDonorName,
             donorPhone: guardianPhone,
             donorAddress: guardianDivision,
             category: 'Madrasa Monthly Fee',
@@ -694,7 +698,7 @@ router.post('/:id/pay', authMiddleware, async (req, res) => {
 
       await tx.income.create({
         data: {
-          donorName: `${student.studentName} (Parent: ${guardianName})`,
+          donorName: effectiveDonorName,
           donorPhone: guardianPhone,
           donorAddress: guardianDivision,
           category: 'Madrasa Monthly Fee',

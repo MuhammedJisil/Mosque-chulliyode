@@ -22,7 +22,8 @@ import {
   Utensils
 } from 'lucide-react';
 import { MONTH_NAMES } from '../utils/categoriesData';
-import { exportToPdf, fmtPdfAmount } from '../utils/exportPdf';
+import { exportToPdf, fmtPdfAmount, cleanDonorName } from '../utils/exportPdf';
+import { exportToExcel } from '../utils/exportExcel';
 import { useToast } from '../context/ToastContext';
 
 export default function DashboardPage({ onNavigate }) {
@@ -50,9 +51,10 @@ export default function DashboardPage({ onNavigate }) {
     year: curYear,
     startDate: firstDayMonthStr,
     endDate: todayStr,
+    orientation: 'landscape', // 'landscape' | 'portrait'
   });
 
-  const handleDownloadStatement = async () => {
+  const handleDownloadStatement = async (format = 'pdf') => {
     try {
       setGeneratingPdf(true);
       const params = {
@@ -82,11 +84,52 @@ export default function DashboardPage({ onNavigate }) {
         toast.info(`No transactions found for ${periodLabel}. An empty statement will be generated.`);
       }
 
+      // If user requested Excel format
+      if (format === 'excel') {
+        const excelRows = (ledger || []).map((entry, idx) => {
+          const rawPartyName = entry.type === 'INCOME'
+            ? (entry.donorName || '-')
+            : (entry.paidTo || '-');
+          const partyName = cleanDonorName(rawPartyName);
+
+          let particularsDesc = entry.type === 'INCOME'
+            ? (entry.description || entry.category || '-')
+            : (entry.purpose ? (entry.description ? `${entry.purpose} - ${entry.description}` : entry.purpose) : (entry.description || entry.category || '-'));
+
+          if (particularsDesc) {
+            particularsDesc = particularsDesc.replace(/\s*\(?Note[s]?:\s*[^)]*\)?/gi, '').trim() || particularsDesc;
+          }
+
+          return {
+            '#': idx + 1,
+            'Date': formatDateDDMMYYYY(entry.date),
+            'Member / Party Name': partyName,
+            'Particulars / Description': particularsDesc,
+            'Category': entry.category || '-',
+            'Payment Mode': entry.paymentMode || 'Cash',
+            'Income (INR)': entry.type === 'INCOME' ? entry.incomeAmount : 0,
+            'Expense (INR)': entry.type === 'EXPENSE' ? entry.expenseAmount : 0,
+            'Balance (INR)': entry.balance
+          };
+        });
+
+        exportToExcel({
+          data: excelRows,
+          sheetName: 'Financial Statement',
+          fileName: `Masjid_Al_Noor_Statement_${periodLabel.toLowerCase().replace(/[^a-z0-9]/g, '_')}.xlsx`
+        });
+
+        toast.success('Financial Statement Excel downloaded successfully!');
+        setShowStatementModal(false);
+        return;
+      }
+
       const columns = ['#', 'Date', 'Member / Party Name', 'Particulars / Description', 'Category', 'Mode', 'Income (₹)', 'Expense (₹)', 'Balance (₹)'];
       const rows = ledger.map((entry, idx) => {
-        const partyName = entry.type === 'INCOME'
+        const rawPartyName = entry.type === 'INCOME'
           ? (entry.donorName || '-')
           : (entry.paidTo || '-');
+        const partyName = cleanDonorName(rawPartyName);
 
         let particularsDesc = entry.type === 'INCOME'
           ? (entry.description || entry.category || '-')
@@ -123,7 +166,7 @@ export default function DashboardPage({ onNavigate }) {
         columns,
         rows,
         summaryRows,
-        orientation: 'landscape',
+        orientation: statementFilter.orientation || 'landscape',
         includeSlNo: false,
         fileName: `masjid_al_noor_ledger_${periodLabel.toLowerCase().replace(/[^a-z0-9]/g, '_')}.pdf`
       });
@@ -131,7 +174,7 @@ export default function DashboardPage({ onNavigate }) {
       toast.success('Financial Statement PDF downloaded successfully!');
       setShowStatementModal(false);
     } catch (err) {
-      toast.error(err.message || 'Failed to generate financial statement PDF');
+      toast.error(err.message || 'Failed to generate financial statement');
     } finally {
       setGeneratingPdf(false);
     }
@@ -733,27 +776,68 @@ export default function DashboardPage({ onNavigate }) {
                 </div>
               )}
 
+              {/* Page Orientation Selector */}
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-2">
+                  PDF Page Orientation
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setStatementFilter({ ...statementFilter, orientation: 'landscape' })}
+                    className={`px-3 py-2 text-xs font-semibold rounded-xl border text-center transition-all flex items-center justify-center gap-2 ${
+                      (statementFilter.orientation || 'landscape') === 'landscape'
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>Landscape (Horizontal) ★</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatementFilter({ ...statementFilter, orientation: 'portrait' })}
+                    className={`px-3 py-2 text-xs font-semibold rounded-xl border text-center transition-all flex items-center justify-center gap-2 ${
+                      statementFilter.orientation === 'portrait'
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>Portrait (Vertical)</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-900/40 text-[11px] text-slate-600 dark:text-slate-300">
                 <strong>Accounting Structure:</strong> Formatted with title <em>Masjid al noor</em> and subtitle <em>sirajul huda sangam chulliyode</em>, Opening Balance, chronologically interleaved Incomes &amp; Expenses, and final Net Balance.
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={() => setShowStatementModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 rounded-xl"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleDownloadStatement}
+                onClick={() => handleDownloadStatement('excel')}
+                disabled={generatingPdf}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl shadow-xs disabled:opacity-50 transition-all"
+                title="Download statement as Excel spreadsheet"
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                <span>Excel (.xlsx)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownloadStatement('pdf')}
                 disabled={generatingPdf}
                 className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md disabled:opacity-50 transition-all"
               >
                 <Download className="w-4 h-4" />
-                {generatingPdf ? 'Generating PDF...' : 'Download Statement (PDF)'}
+                {generatingPdf ? 'Generating...' : 'Download Statement (PDF)'}
               </button>
             </div>
           </div>

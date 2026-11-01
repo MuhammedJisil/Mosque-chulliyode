@@ -5,7 +5,7 @@ import CustomFieldInput from '../components/CustomFieldInput';
 import CameraCaptureModal from '../components/CameraCaptureModal';
 import ProofViewerModal from '../components/ProofViewerModal';
 import ExportModal from '../components/ExportModal';
-import { exportToPdf, exportSingleExpenseVoucherPdf } from '../utils/exportPdf';
+import { exportToPdf, exportSingleExpenseVoucherPdf, cleanDonorName } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import Pagination from '../components/Pagination';
@@ -39,7 +39,7 @@ export default function ExpensePage() {
   const [selectedPaymentMode, setSelectedPaymentMode] = useState('All');
   const [selectedMonth, setSelectedMonth] = useState('All');
   const [selectedYear, setSelectedYear] = useState('All');
-  const [sortOrder, setSortOrder] = useState('newest');
+  const [sortOrder, setSortOrder] = useState('oldest');
 
   // Custom Categories list from API
   const [customCategories, setCustomCategories] = useState([]);
@@ -54,8 +54,11 @@ export default function ExpensePage() {
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
 
-  // Member link / recipient dropdown state
+  // Members, Madrasa & Staff list for recipient dropdown & search
   const [membersList, setMembersList] = useState([]);
+  const [madrasaStudentsList, setMadrasaStudentsList] = useState([]);
+  const [staffList, setStaffList] = useState([]);
+  const [recipientSourceTab, setRecipientSourceTab] = useState('ALL'); // 'ALL' | 'MEMBERS' | 'MADRASA' | 'STAFF'
   const [showMemberDropdown, setShowMemberDropdown] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const memberDropdownRef = useRef(null);
@@ -109,7 +112,7 @@ export default function ExpensePage() {
     }
   };
 
-  // Fetch Mahallu Members for recipient selection
+  // Fetch Mahallu Members, Madrasa Students & Staff for recipient selection
   useEffect(() => {
     const fetchMembers = async () => {
       try {
@@ -121,7 +124,29 @@ export default function ExpensePage() {
         console.error('Failed to load members for expense recipient dropdown:', err);
       }
     };
+    const fetchMadrasa = async () => {
+      try {
+        const res = await api.get('/api/madrasa');
+        if (res.success && res.students) {
+          setMadrasaStudentsList(res.students);
+        }
+      } catch (err) {
+        console.error('Failed to load madrasa for expense recipient dropdown:', err);
+      }
+    };
+    const fetchStaff = async () => {
+      try {
+        const res = await api.get('/api/staff');
+        if (res.success && res.staff) {
+          setStaffList(res.staff);
+        }
+      } catch (err) {
+        console.error('Failed to load staff for expense recipient dropdown:', err);
+      }
+    };
     fetchMembers();
+    fetchMadrasa();
+    fetchStaff();
   }, []);
 
   // Close member dropdown on outside click
@@ -135,27 +160,100 @@ export default function ExpensePage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter members for recipient dropdown
-  const filteredMembers = useMemo(() => {
-    if (!memberSearchQuery.trim()) return membersList.slice(0, 35);
-    const q = memberSearchQuery.toLowerCase().trim();
-    return membersList.filter(m =>
-      (m.name && m.name.toLowerCase().includes(q)) ||
-      (m.phone && m.phone.toLowerCase().includes(q)) ||
-      (m.division && m.division.toLowerCase().includes(q)) ||
-      (m.idNumber && String(m.idNumber).toLowerCase().includes(q))
-    ).slice(0, 35);
-  }, [membersList, memberSearchQuery]);
+  // Filter combined recipients for dropdown
+  const combinedRecipients = useMemo(() => {
+    const list = [];
+    if (recipientSourceTab === 'ALL' || recipientSourceTab === 'MEMBERS') {
+      membersList.forEach(m => {
+        list.push({
+          type: 'MEMBER',
+          id: `mem-${m.id}`,
+          memberId: m.id,
+          name: m.name,
+          phone: m.phone || '',
+          address: m.address || m.division || '',
+          division: m.division || '',
+          idNumber: m.idNumber || '',
+          raw: m,
+        });
+      });
+    }
+    if (recipientSourceTab === 'ALL' || recipientSourceTab === 'MADRASA') {
+      madrasaStudentsList.forEach(s => {
+        const studentTitle = cleanDonorName(s.parentName || s.studentName || 'Madrasa Member');
+        list.push({
+          type: 'MADRASA',
+          id: `mad-${s.id}`,
+          studentId: s.id,
+          memberId: s.memberId || null,
+          name: studentTitle,
+          studentName: s.studentName,
+          parentName: s.parentName,
+          phone: s.parentPhone || s.member?.phone || '',
+          address: s.address || s.division || s.member?.address || '',
+          division: s.division || s.member?.division || '',
+          classLevel: s.classLevel || '',
+          idNumber: s.member?.idNumber || '',
+          raw: s,
+        });
+      });
+    }
+    if (recipientSourceTab === 'ALL' || recipientSourceTab === 'STAFF') {
+      staffList.forEach(stf => {
+        list.push({
+          type: 'STAFF',
+          id: `stf-${stf.id}`,
+          staffId: stf.id,
+          name: stf.name,
+          phone: stf.phone || '',
+          category: stf.category || stf.role || 'Staff',
+          address: stf.category || 'Staff',
+          division: '',
+          idNumber: '',
+          raw: stf,
+        });
+      });
+    }
 
-  const handleSelectMember = (member) => {
-    setFormData(prev => ({
-      ...prev,
-      paidTo: member.name,
-      memberId: member.id,
-    }));
+    if (!memberSearchQuery.trim()) return list.slice(0, 40);
+    const q = memberSearchQuery.toLowerCase().trim();
+    return list.filter(d =>
+      d.name.toLowerCase().includes(q) ||
+      (d.phone && d.phone.includes(q)) ||
+      (d.address && d.address.toLowerCase().includes(q)) ||
+      (d.division && d.division.toLowerCase().includes(q)) ||
+      (d.category && d.category.toLowerCase().includes(q)) ||
+      (d.studentName && d.studentName.toLowerCase().includes(q)) ||
+      (d.parentName && d.parentName.toLowerCase().includes(q)) ||
+      (d.idNumber && String(d.idNumber).toLowerCase().includes(q))
+    ).slice(0, 40);
+  }, [membersList, madrasaStudentsList, staffList, recipientSourceTab, memberSearchQuery]);
+
+  const handleSelectMember = (recipient) => {
+    if (recipient.type === 'MEMBER') {
+      setFormData(prev => ({
+        ...prev,
+        paidTo: recipient.name,
+        memberId: recipient.memberId,
+      }));
+      toast.success(`Selected member: ${recipient.name} ${recipient.idNumber ? `(#${recipient.idNumber})` : ''}`);
+    } else if (recipient.type === 'STAFF') {
+      setFormData(prev => ({
+        ...prev,
+        paidTo: recipient.name,
+        memberId: null,
+      }));
+      toast.success(`Selected staff: ${recipient.name} (${recipient.category || 'Staff'})`);
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        paidTo: recipient.name,
+        memberId: recipient.memberId || null,
+      }));
+      toast.success(`Selected madrasa member: ${recipient.name}`);
+    }
     setShowMemberDropdown(false);
     setMemberSearchQuery('');
-    toast.success(`Selected recipient: ${member.name} ${member.idNumber ? `(#${member.idNumber})` : ''}`);
   };
 
   const getMemberInfo = (item) => {
@@ -894,7 +992,7 @@ export default function ExpensePage() {
                           onClick={() => setShowMemberDropdown(prev => !prev)}
                           className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-1"
                         >
-                          <span>Select Member ({membersList.length})</span>
+                          <span>Select Member / Madrasa / Staff</span>
                           <ChevronDown className="w-3 h-3" />
                         </button>
                       )}
@@ -903,7 +1001,7 @@ export default function ExpensePage() {
                       <input
                         type="text"
                         required
-                        placeholder="Type name or select member..."
+                        placeholder="Type name or select member / madrasa / staff..."
                         value={formData.paidTo}
                         onChange={(e) => {
                           setFormData({ ...formData, paidTo: e.target.value });
@@ -923,30 +1021,62 @@ export default function ExpensePage() {
                       </button>
                     </div>
 
-                    {/* Member Dropdown Combobox Menu */}
+                    {/* Member, Madrasa & Staff Dropdown Combobox Menu */}
                     {showMemberDropdown && (
-                      <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden max-h-64 flex flex-col">
-                        <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                      <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden max-h-72 flex flex-col animate-fade-in">
+                        {/* Search & Tabs */}
+                        <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 space-y-2">
                           <div className="relative">
                             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                             <input
                               type="text"
                               autoFocus
-                              placeholder="Search member by name, phone, area..."
+                              placeholder="Search member, madrasa or staff..."
                               value={memberSearchQuery}
                               onChange={(e) => setMemberSearchQuery(e.target.value)}
                               className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-rose-500"
                             />
                           </div>
+                          {/* Filter Tabs */}
+                          <div className="flex items-center gap-1 text-[10px] font-semibold flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => setRecipientSourceTab('ALL')}
+                              className={`px-2 py-0.5 rounded-md transition-colors ${recipientSourceTab === 'ALL' ? 'bg-rose-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                            >
+                              All ({membersList.length + madrasaStudentsList.length + staffList.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRecipientSourceTab('MEMBERS')}
+                              className={`px-2 py-0.5 rounded-md transition-colors ${recipientSourceTab === 'MEMBERS' ? 'bg-rose-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                            >
+                              Mahallu ({membersList.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRecipientSourceTab('MADRASA')}
+                              className={`px-2 py-0.5 rounded-md transition-colors ${recipientSourceTab === 'MADRASA' ? 'bg-rose-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                            >
+                              Madrasa ({madrasaStudentsList.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRecipientSourceTab('STAFF')}
+                              className={`px-2 py-0.5 rounded-md transition-colors ${recipientSourceTab === 'STAFF' ? 'bg-rose-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                            >
+                              Staff ({staffList.length})
+                            </button>
+                          </div>
                         </div>
 
                         <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 text-xs flex-1">
-                          {filteredMembers.length === 0 ? (
+                          {combinedRecipients.length === 0 ? (
                             <div className="p-3 text-center text-slate-400 text-xs">
-                              No members match "{memberSearchQuery}". You can keep typing custom recipient/vendor.
+                              No records match "{memberSearchQuery}". You can keep typing custom recipient/vendor.
                             </div>
                           ) : (
-                            filteredMembers.map((m) => (
+                            combinedRecipients.map((m) => (
                               <button
                                 key={m.id}
                                 type="button"
@@ -954,20 +1084,33 @@ export default function ExpensePage() {
                                 className="w-full text-left px-3 py-2 hover:bg-rose-50/70 dark:hover:bg-rose-950/40 flex items-center justify-between transition-colors group"
                               >
                                 <div>
-                                  <div className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-rose-600 flex items-center gap-1.5">
+                                  <div className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-rose-600 flex items-center gap-1.5 flex-wrap">
                                     <span>{m.name}</span>
-                                    {m.idNumber && (
-                                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60">
-                                        #{m.idNumber}
+                                    {m.type === 'MEMBER' && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60">
+                                        Mahallu {m.idNumber ? `#${m.idNumber}` : ''}
+                                      </span>
+                                    )}
+                                    {m.type === 'MADRASA' && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
+                                        Madrasa {m.classLevel ? `• Class ${m.classLevel}` : ''}
+                                      </span>
+                                    )}
+                                    {m.type === 'STAFF' && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/60">
+                                        Staff {m.category ? `• ${m.category}` : ''}
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                  <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
+                                    {m.type === 'MADRASA' && m.studentName && m.parentName && (
+                                      <span className="text-amber-700 dark:text-amber-400 font-medium">Student: {m.studentName}</span>
+                                    )}
                                     {m.phone && <span>📞 {m.phone}</span>}
                                     {(m.address || m.division) && <span>📍 {m.address || m.division}</span>}
                                   </div>
                                 </div>
-                                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-full border border-rose-200/50 dark:border-rose-800/50">
+                                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-full border border-rose-200/50 dark:border-rose-800/50 shrink-0">
                                   Select
                                 </span>
                               </button>

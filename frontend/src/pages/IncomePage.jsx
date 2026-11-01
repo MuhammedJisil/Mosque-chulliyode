@@ -5,7 +5,7 @@ import CustomFieldInput from '../components/CustomFieldInput';
 import CameraCaptureModal from '../components/CameraCaptureModal';
 import ProofViewerModal from '../components/ProofViewerModal';
 import ExportModal from '../components/ExportModal';
-import { exportToPdf, exportSingleIncomeReceiptPdf } from '../utils/exportPdf';
+import { exportToPdf, exportSingleIncomeReceiptPdf, cleanDonorName } from '../utils/exportPdf';
 import { exportToExcel } from '../utils/exportExcel';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import { openWhatsAppPaymentReceipt } from '../utils/whatsapp';
@@ -81,10 +81,11 @@ export default function IncomePage() {
   const [formData, setFormData] = useState(initialFormState);
   const [submitting, setSubmitting] = useState(false);
 
-  // Members & Madrasa list for Donor dropdown & search
+  // Members, Madrasa & Staff list for Donor dropdown & search
   const [membersList, setMembersList] = useState([]);
   const [madrasaStudentsList, setMadrasaStudentsList] = useState([]);
-  const [donorSourceTab, setDonorSourceTab] = useState('ALL'); // 'ALL' | 'MEMBERS' | 'MADRASA'
+  const [staffList, setStaffList] = useState([]);
+  const [donorSourceTab, setDonorSourceTab] = useState('ALL'); // 'ALL' | 'MEMBERS' | 'MADRASA' | 'STAFF'
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [showMemberDropdown, setShowMemberDropdown] = useState(false);
   const memberDropdownRef = useRef(null);
@@ -141,6 +142,18 @@ export default function IncomePage() {
     }
   };
 
+  // Load staff for donor dropdown
+  const fetchStaff = async () => {
+    try {
+      const res = await api.get('/api/staff');
+      if (res.success && res.staff) {
+        setStaffList(res.staff);
+      }
+    } catch (err) {
+      console.error('Failed to load staff for donor dropdown:', err);
+    }
+  };
+
   // Load custom categories
   const fetchCustomCategories = async () => {
     try {
@@ -157,6 +170,7 @@ export default function IncomePage() {
     fetchCustomCategories();
     fetchMembers();
     fetchMadrasaStudents();
+    fetchStaff();
   }, []);
 
   // Close member dropdown on outside click
@@ -170,7 +184,7 @@ export default function IncomePage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter combined members & madrasa students for donor dropdown
+  // Filter combined members, madrasa students & staff for donor dropdown
   const combinedDonors = useMemo(() => {
     const list = [];
     if (donorSourceTab === 'ALL' || donorSourceTab === 'MEMBERS') {
@@ -190,7 +204,7 @@ export default function IncomePage() {
     }
     if (donorSourceTab === 'ALL' || donorSourceTab === 'MADRASA') {
       madrasaStudentsList.forEach(s => {
-        const studentTitle = s.parentName || s.studentName || 'Madrasa Student';
+        const studentTitle = cleanDonorName(s.parentName || s.studentName || 'Madrasa Student');
         list.push({
           type: 'MADRASA',
           id: `mad-${s.id}`,
@@ -209,6 +223,23 @@ export default function IncomePage() {
         });
       });
     }
+    if (donorSourceTab === 'ALL' || donorSourceTab === 'STAFF') {
+      staffList.forEach(stf => {
+        list.push({
+          type: 'STAFF',
+          id: `stf-${stf.id}`,
+          staffId: stf.id,
+          name: stf.name,
+          phone: stf.phone || '',
+          category: stf.category || stf.role || 'Staff',
+          designation: stf.category || stf.role || 'Staff',
+          address: stf.category || 'Staff',
+          division: '',
+          idNumber: '',
+          raw: stf,
+        });
+      });
+    }
 
     if (!memberSearchQuery.trim()) return list.slice(0, 40);
     const q = memberSearchQuery.toLowerCase().trim();
@@ -217,11 +248,12 @@ export default function IncomePage() {
       (d.phone && d.phone.includes(q)) ||
       (d.address && d.address.toLowerCase().includes(q)) ||
       (d.division && d.division.toLowerCase().includes(q)) ||
+      (d.category && d.category.toLowerCase().includes(q)) ||
       (d.studentName && d.studentName.toLowerCase().includes(q)) ||
       (d.parentName && d.parentName.toLowerCase().includes(q)) ||
       (d.idNumber && String(d.idNumber).toLowerCase().includes(q))
     ).slice(0, 40);
-  }, [membersList, madrasaStudentsList, donorSourceTab, memberSearchQuery]);
+  }, [membersList, madrasaStudentsList, staffList, donorSourceTab, memberSearchQuery]);
 
   const getMemberInfo = (item) => {
     if (!item) return null;
@@ -250,10 +282,24 @@ export default function IncomePage() {
         donorAddress: donor.address || prev.donorAddress || '',
       }));
       toast.success(`Selected member: ${donor.name} ${donor.idNumber ? `(#${donor.idNumber})` : ''}`);
+    } else if (donor.type === 'STAFF') {
+      setFormData(prev => ({
+        ...prev,
+        memberId: null,
+        studentId: null,
+        donorName: donor.name,
+        donorPhone: donor.phone || prev.donorPhone || '',
+        donorAddress: donor.category || prev.donorAddress || '',
+      }));
+      toast.success(`Selected staff: ${donor.name} (${donor.category || 'Staff'})`);
     } else {
-      const displayName = donor.parentName
-        ? `${donor.parentName}${donor.studentName ? ` (Parent of ${donor.studentName})` : ''}`
-        : (donor.studentName || donor.name);
+      const parentName = donor.parentName ? donor.parentName.trim() : '';
+      const studentName = donor.studentName ? donor.studentName.trim() : '';
+      const displayName = parentName
+        ? (studentName && studentName.toLowerCase() !== parentName.toLowerCase()
+            ? `${studentName} (Parent: ${parentName})`
+            : parentName)
+        : (studentName || donor.name);
       setFormData(prev => ({
         ...prev,
         memberId: donor.memberId || null,
@@ -362,7 +408,7 @@ export default function IncomePage() {
       return [
         idx + 1,
         formatDateDDMMYYYY(item.date),
-        item.donorName || '-',
+        cleanDonorName(item.donorName || '-'),
         cleanParticulars,
         item.category || '-',
         item.paymentMode || 'Cash',
@@ -397,7 +443,7 @@ export default function IncomePage() {
 
     const excelRows = dataToExport.map(item => ({
       'Date': formatDateDDMMYYYY(item.date),
-      'Donor Name': item.donorName,
+      'Donor Name': cleanDonorName(item.donorName),
       'Donor Phone': item.donorPhone || '',
       'Address': item.donorAddress || '',
       'Category': item.category,
@@ -647,7 +693,7 @@ export default function IncomePage() {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
-                      <span>{item.donorName}</span>
+                      <span>{cleanDonorName(item.donorName)}</span>
                       {getMemberInfo(item)?.idNumber && (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
                           #{getMemberInfo(item).idNumber}
@@ -770,7 +816,7 @@ export default function IncomePage() {
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
-                        <span>{item.donorName}</span>
+                        <span>{cleanDonorName(item.donorName)}</span>
                         {getMemberInfo(item)?.idNumber && (
                           <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
                             #{getMemberInfo(item).idNumber}
@@ -922,7 +968,7 @@ export default function IncomePage() {
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400 uppercase font-semibold text-[10px]">Donor / Contributor</span>
-                  <span className="font-bold text-sm text-slate-800 dark:text-slate-100">{viewingItem.donorName}</span>
+                  <span className="font-bold text-sm text-slate-800 dark:text-slate-100">{cleanDonorName(viewingItem.donorName)}</span>
                 </div>
                 {viewingItem.donorPhone && (
                   <div className="flex justify-between items-center">
@@ -1139,13 +1185,13 @@ export default function IncomePage() {
                             />
                           </div>
                           {/* Filter Tabs */}
-                          <div className="flex items-center gap-1 text-[10px] font-semibold">
+                          <div className="flex items-center gap-1 text-[10px] font-semibold flex-wrap">
                             <button
                               type="button"
                               onClick={() => setDonorSourceTab('ALL')}
                               className={`px-2 py-0.5 rounded-md transition-colors ${donorSourceTab === 'ALL' ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
                             >
-                              All ({membersList.length + madrasaStudentsList.length})
+                              All ({membersList.length + madrasaStudentsList.length + staffList.length})
                             </button>
                             <button
                               type="button"
@@ -1160,6 +1206,13 @@ export default function IncomePage() {
                               className={`px-2 py-0.5 rounded-md transition-colors ${donorSourceTab === 'MADRASA' ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
                             >
                               Madrasa ({madrasaStudentsList.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDonorSourceTab('STAFF')}
+                              className={`px-2 py-0.5 rounded-md transition-colors ${donorSourceTab === 'STAFF' ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                            >
+                              Staff ({staffList.length})
                             </button>
                           </div>
                         </div>
@@ -1188,6 +1241,11 @@ export default function IncomePage() {
                                     {d.type === 'MADRASA' && (
                                       <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
                                         Madrasa {d.classLevel ? `• Class ${d.classLevel}` : ''}
+                                      </span>
+                                    )}
+                                    {d.type === 'STAFF' && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/60">
+                                        Staff {d.category ? `• ${d.category}` : ''}
                                       </span>
                                     )}
                                   </div>

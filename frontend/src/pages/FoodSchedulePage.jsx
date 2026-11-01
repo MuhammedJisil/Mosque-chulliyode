@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../utils/api';
 import { openWhatsAppFoodReminder } from '../utils/whatsapp';
@@ -81,6 +81,21 @@ export default function FoodSchedulePage() {
   const [generateStartDate, setGenerateStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [generateMealType, setGenerateMealType] = useState('All Day');
 
+  // Searchable member selection state in Add/Edit Turn modal
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [showMemberDropdown, setShowMemberDropdown] = useState(false);
+  const memberDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (memberDropdownRef.current && !memberDropdownRef.current.contains(e.target)) {
+        setShowMemberDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Fetch duties and members
   const fetchDuties = async () => {
     try {
@@ -135,6 +150,18 @@ export default function FoodSchedulePage() {
     return Array.from(set).sort();
   }, [members, duties]);
 
+  // Filter members for searchable combobox in Add Turn modal
+  const filteredFoodMembers = useMemo(() => {
+    if (!memberSearchQuery.trim()) return members.slice(0, 40);
+    const q = memberSearchQuery.toLowerCase().trim();
+    return members.filter(m =>
+      (m.name && m.name.toLowerCase().includes(q)) ||
+      (m.phone && m.phone.toLowerCase().includes(q)) ||
+      (m.division && m.division.toLowerCase().includes(q)) ||
+      (m.idNumber && String(m.idNumber).toLowerCase().includes(q))
+    ).slice(0, 40);
+  }, [members, memberSearchQuery]);
+
   // Date filtering logic
   const filteredDuties = useMemo(() => {
     const today = new Date();
@@ -179,11 +206,15 @@ export default function FoodSchedulePage() {
   const handleOpenAdd = () => {
     setEditingDuty(null);
     setFormData(initialForm);
+    setMemberSearchQuery('');
+    setShowMemberDropdown(false);
     setShowAddModal(true);
   };
 
   const handleOpenEdit = (duty) => {
     setEditingDuty(duty);
+    setMemberSearchQuery('');
+    setShowMemberDropdown(false);
     setFormData({
       memberId: duty.memberId ? String(duty.memberId) : '',
       customName: duty.customName || '',
@@ -1122,23 +1153,125 @@ export default function FoodSchedulePage() {
 
             <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
               <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 overscroll-contain">
-                {/* Select Registered Member / House */}
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                    Select Registered Member (House)
-                  </label>
-                  <select
-                    value={formData.memberId}
-                    onChange={(e) => handleMemberSelect(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  >
-                    <option value="">-- Choose Member or Enter Custom House below --</option>
-                    {members.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.idNumber ? `[#${m.idNumber}] ` : ''}{m.name} {m.division ? `(${m.division})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                {/* Select Registered Member / House with Search */}
+                <div className="relative" ref={memberDropdownRef}>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300">
+                      Select Registered Member (House)
+                    </label>
+                    {formData.memberId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleMemberSelect('');
+                          setMemberSearchQuery('');
+                        }}
+                        className="text-[11px] text-rose-500 hover:underline font-medium"
+                      >
+                        Clear Member Link
+                      </button>
+                    )}
+                  </div>
+
+                  {(() => {
+                    const selectedMem = formData.memberId ? members.find(m => m.id === parseInt(formData.memberId)) : null;
+                    return (
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="Search member by name, phone, area, ID..."
+                          value={
+                            showMemberDropdown
+                              ? memberSearchQuery
+                              : (selectedMem ? `${selectedMem.idNumber ? `[#${selectedMem.idNumber}] ` : ''}${selectedMem.name}${selectedMem.division ? ` (${selectedMem.division})` : ''}` : memberSearchQuery)
+                          }
+                          onChange={(e) => {
+                            setMemberSearchQuery(e.target.value);
+                            if (!showMemberDropdown) setShowMemberDropdown(true);
+                          }}
+                          onFocus={() => setShowMemberDropdown(true)}
+                          className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-8"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowMemberDropdown(prev => !prev)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                          title="Toggle Member List"
+                        >
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Searchable Dropdown Combobox Menu */}
+                  {showMemberDropdown && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden max-h-64 flex flex-col animate-fade-in">
+                      <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            autoFocus
+                            placeholder="Type to filter members..."
+                            value={memberSearchQuery}
+                            onChange={(e) => setMemberSearchQuery(e.target.value)}
+                            className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 text-xs flex-1">
+                        {filteredFoodMembers.length === 0 ? (
+                          <div className="p-3 text-center text-slate-400 text-xs">
+                            No members match "{memberSearchQuery}". You can enter custom house details below.
+                          </div>
+                        ) : (
+                          filteredFoodMembers.map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => {
+                                handleMemberSelect(m.id);
+                                setShowMemberDropdown(false);
+                                setMemberSearchQuery('');
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40 flex items-center justify-between transition-colors group"
+                            >
+                              <div>
+                                <div className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 flex items-center gap-1.5">
+                                  <span>{m.name}</span>
+                                  {m.idNumber && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
+                                      #{m.idNumber}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                  {m.phone && <span>📞 {m.phone}</span>}
+                                  {(m.address || m.division) && <span>📍 {m.address || m.division}</span>}
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200/50 dark:border-emerald-800/50 shrink-0">
+                                Select
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="p-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400">Total {members.length} members</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowMemberDropdown(false)}
+                          className="text-emerald-600 font-semibold hover:underline"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Or Custom Name */}
