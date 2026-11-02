@@ -93,6 +93,112 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// PUT /api/auth/admin-credentials - Update Admin ID (Username), Display Name, and/or Password
+router.put('/admin-credentials', authMiddleware, requireMainAdmin, passwordLimiter, async (req, res) => {
+  const { currentPassword, newUsername, newName, newPassword } = req.body;
+
+  if (!currentPassword) {
+    return res.status(400).json({ success: false, message: 'Current password is required to verify your identity before making administrative changes.' });
+  }
+
+  try {
+    const admin = await prisma.admin.findUnique({
+      where: { id: req.admin.id }
+    });
+
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'Admin account not found.' });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, admin.password);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Current password verification failed. Please enter your valid current password.' });
+    }
+
+    const updateData = {};
+
+    // 1. Update Admin ID (Username)
+    if (newUsername && newUsername.trim()) {
+      const cleanUsername = newUsername.trim().toLowerCase();
+      if (cleanUsername.length < 3) {
+        return res.status(400).json({ success: false, message: 'Admin ID must be at least 3 characters long.' });
+      }
+      if (!/^[a-zA-Z0-9_.-]+$/.test(cleanUsername)) {
+        return res.status(400).json({ success: false, message: 'Admin ID can only contain letters, numbers, hyphens, dots, and underscores.' });
+      }
+
+      // Check uniqueness if changing
+      if (cleanUsername !== admin.username) {
+        const existing = await prisma.admin.findUnique({
+          where: { username: cleanUsername }
+        });
+        if (existing && existing.id !== admin.id) {
+          return res.status(400).json({ success: false, message: `Admin ID "${cleanUsername}" is already in use. Please pick another unique ID.` });
+        }
+        updateData.username = cleanUsername;
+      }
+    }
+
+    // 2. Update Display Name
+    if (newName && newName.trim()) {
+      updateData.name = newName.trim();
+    }
+
+    // 3. Update Password (if provided)
+    if (newPassword && newPassword.trim()) {
+      if (typeof newPassword !== 'string' || newPassword.length < 8) {
+        return res.status(400).json({
+          success: false,
+          message: 'New password must be at least 8 characters long for adequate security.'
+        });
+      }
+      const hasLetter = /[a-zA-Z]/.test(newPassword);
+      const hasNumberOrSymbol = /[\d\W]/.test(newPassword);
+      if (!hasLetter || !hasNumberOrSymbol) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password must contain a combination of letters and at least one number or special character.'
+        });
+      }
+      if (currentPassword === newPassword) {
+        return res.status(400).json({
+          success: false,
+          message: 'New password cannot be the same as your current password.'
+        });
+      }
+
+      updateData.password = await bcrypt.hash(newPassword, 12);
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ success: false, message: 'No changes provided to update.' });
+    }
+
+    const updatedAdmin = await prisma.admin.update({
+      where: { id: admin.id },
+      data: updateData,
+      select: { id: true, username: true, name: true, role: true }
+    });
+
+    // Generate fresh JWT token with the new username and role
+    const newToken = jwt.sign(
+      { id: updatedAdmin.id, username: updatedAdmin.username, role: updatedAdmin.role },
+      process.env.JWT_SECRET || 'mosque_default_secret_key',
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      message: 'Admin ID & security credentials updated successfully!',
+      admin: updatedAdmin,
+      token: newToken
+    });
+  } catch (error) {
+    console.error('Update admin credentials error:', error);
+    res.status(500).json({ success: false, message: 'Server error updating admin credentials: ' + error.message });
+  }
+});
+
 // Change Password (for logged-in admin with high security)
 router.put('/change-password', authMiddleware, passwordLimiter, async (req, res) => {
   const { currentPassword, newPassword } = req.body;

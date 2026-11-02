@@ -58,7 +58,7 @@ function MainApp() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-200">
       <Navbar onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
 
-      <div className="flex-1 flex max-w-7xl w-full mx-auto">
+      <div className="flex-1 flex w-full">
         <Sidebar
           activeTab={activeTab}
           onTabChange={setActiveTab}
@@ -66,8 +66,10 @@ function MainApp() {
           onClose={() => setSidebarOpen(false)}
         />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-full overflow-x-hidden">
-          {renderActivePage()}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden">
+          <div className="w-full max-w-[1600px] mx-auto">
+            {renderActivePage()}
+          </div>
         </main>
       </div>
     </div>

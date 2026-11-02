@@ -142,6 +142,17 @@ export const exportToPdf = async ({
     row.map(cell => (typeof cell === 'string' ? safe(cleanDonorName(cell)) : cell))
   );
 
+  let tableBody = safeRows;
+  if (tableBody.length === 0) {
+    tableBody = [
+      [{
+        content: 'No records found for the selected period / criteria',
+        colSpan: Math.max(finalColumns.length, 1),
+        styles: { halign: 'center', textColor: [100, 116, 139], fontStyle: 'italic', cellPadding: 12 }
+      }]
+    ];
+  }
+
   const isWide = finalColumns.length > 7;
   const tableFontSize = finalOrientation === 'portrait' ? (isWide ? 9.5 : 10) : (isWide ? 10 : 10.5);
   const tableHeadFontSize = tableFontSize + 1;
@@ -149,7 +160,7 @@ export const exportToPdf = async ({
   doc.autoTable({
     startY: 135,
     head: [finalColumns.map(c => safe(c))],
-    body: safeRows,
+    body: tableBody,
     theme: 'grid',
     styles: {
       font: fontName,
@@ -316,17 +327,33 @@ export const exportFamilySurveyPdf = async ({
     'Amount'
   ];
 
-  const rows = members.map((m, idx) => [
-    idx + 1,
-    m.name || '-',
-    m.phone || '-',
-    m.division || '-',
-    m.job || '-',
-    m.hasFamily ? (m.adultsCount || 0) : '-',
-    m.hasFamily ? (m.childrenCount || 0) : '-',
-    m.familyDetails || (m.hasFamily ? 'Family registered' : 'Single Member'),
-    '' // Blank amount column for manual entry after taking printout
-  ]);
+  let rows = [];
+  if (members && members.length > 0) {
+    rows = members.map((m, idx) => [
+      idx + 1,
+      m.name || '-',
+      m.phone || '-',
+      m.division || '-',
+      m.job || '-',
+      m.hasFamily ? (m.adultsCount || 0) : '-',
+      m.hasFamily ? (m.childrenCount || 0) : '-',
+      m.familyDetails || (m.hasFamily ? 'Family registered' : 'Single Member'),
+      '' // Blank amount column for manual entry after taking printout
+    ]);
+  } else {
+    // If no members registered yet, provide 15 clean blank survey rows for printout
+    rows = Array.from({ length: 15 }, (_, idx) => [
+      idx + 1,
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      ''
+    ]);
+  }
 
   const safeRows = rows.map(row =>
     row.map(cell => (typeof cell === 'string' ? (cell === '' ? '' : safe(cleanDonorName(cell))) : cell))
@@ -340,7 +367,7 @@ export const exportFamilySurveyPdf = async ({
     styles: {
       font: fontName,
       fontSize: finalOrientation === 'portrait' ? 9.5 : 10.5,
-      cellPadding: 4.5,
+      cellPadding: finalOrientation === 'portrait' ? 4 : 4.5,
       overflow: 'linebreak',
       textColor: [15, 23, 42],
       lineWidth: 0.6,
@@ -351,14 +378,24 @@ export const exportFamilySurveyPdf = async ({
       textColor: [255, 255, 255],
       font: fontName,
       fontStyle: 'bold',
-      fontSize: finalOrientation === 'portrait' ? 10.5 : 11.5,
+      fontSize: finalOrientation === 'portrait' ? 10 : 11.5,
       halign: 'left',
       lineWidth: 0.6,
       lineColor: [6, 78, 59]
     },
     tableLineColor: [140, 150, 165],
     tableLineWidth: 0.6,
-    columnStyles: {
+    columnStyles: finalOrientation === 'portrait' ? {
+      0: { cellWidth: 22, halign: 'center' },
+      1: { cellWidth: 95 },
+      2: { cellWidth: 65 },
+      3: { cellWidth: 60 },
+      4: { cellWidth: 60 },
+      5: { cellWidth: 32, halign: 'center' },
+      6: { cellWidth: 32, halign: 'center' },
+      7: { cellWidth: 90 },
+      8: { cellWidth: 50, halign: 'center' }
+    } : {
       0: { cellWidth: 26, halign: 'center' },
       5: { cellWidth: 36, halign: 'center' },
       6: { cellWidth: 38, halign: 'center' },
@@ -367,7 +404,7 @@ export const exportFamilySurveyPdf = async ({
     alternateRowStyles: {
       fillColor: [248, 250, 252]
     },
-    margin: { left: 30, right: 30 },
+    margin: { left: finalOrientation === 'portrait' ? 20 : 30, right: finalOrientation === 'portrait' ? 20 : 30 },
     didDrawPage: () => {
       const str = `Page ${doc.internal.getNumberOfPages()}`;
       doc.setFont(fontName, 'normal');
@@ -377,7 +414,8 @@ export const exportFamilySurveyPdf = async ({
     }
   });
 
-  doc.save(fileName);
+  const cleanFileName = (fileName || 'mahallu_family_survey_report.pdf').replace(/[\/\\]/g, '_');
+  doc.save(cleanFileName);
 };
 
 /**
@@ -451,29 +489,44 @@ export const exportMadrasaSurveyPdf = async ({
     'Amount'
   ];
 
-  const rows = students.map((s, idx) => {
-    const parentName = cleanDonorName(s.parentName || s.member?.name || '-');
-    const phone = s.parentPhone || s.member?.phone || '-';
-    const div = s.division || s.member?.division || '-';
-    const job = s.job || s.member?.job || '-';
-    const count = `${s.studentsCount || 1}`;
-    let studentDetails = (s.studentName && s.studentName.trim().toLowerCase() !== parentName.trim().toLowerCase())
-      ? s.studentName
-      : '-';
-    if (s.classLevel) {
-      studentDetails = studentDetails !== '-' ? `${studentDetails} (Class ${s.classLevel})` : `Class ${s.classLevel}`;
-    }
-    return [
+  let rows = [];
+  if (students && students.length > 0) {
+    rows = students.map((s, idx) => {
+      const parentName = cleanDonorName(s.parentName || s.member?.name || '-');
+      const phone = s.parentPhone || s.member?.phone || '-';
+      const div = s.division || s.member?.division || '-';
+      const job = s.job || s.member?.job || '-';
+      const count = `${s.studentsCount || 1}`;
+      let studentDetails = (s.studentName && typeof s.studentName === 'string' && s.studentName.trim().toLowerCase() !== (typeof parentName === 'string' ? parentName.trim().toLowerCase() : ''))
+        ? s.studentName
+        : '-';
+      if (s.classLevel) {
+        studentDetails = studentDetails !== '-' ? `${studentDetails} (Class ${s.classLevel})` : `Class ${s.classLevel}`;
+      }
+      return [
+        idx + 1,
+        parentName,
+        phone,
+        div,
+        job,
+        count,
+        studentDetails,
+        '' // Blank Amount column for manual fill-in upon printout
+      ];
+    });
+  } else {
+    // If no students registered yet, provide 15 clean blank survey rows for printout & manual survey entry
+    rows = Array.from({ length: 15 }, (_, idx) => [
       idx + 1,
-      parentName,
-      phone,
-      div,
-      job,
-      count,
-      studentDetails,
-      '' // Blank Amount column for manual fill-in upon printout
-    ];
-  });
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      ''
+    ]);
+  }
 
   const safeRows = rows.map(row =>
     row.map(cell => (typeof cell === 'string' ? (cell === '' ? '' : safe(cleanDonorName(cell))) : cell))
@@ -487,7 +540,7 @@ export const exportMadrasaSurveyPdf = async ({
     styles: {
       font: fontName,
       fontSize: finalOrientation === 'portrait' ? 9.5 : 10.5,
-      cellPadding: 4.5,
+      cellPadding: finalOrientation === 'portrait' ? 4 : 4.5,
       overflow: 'linebreak',
       textColor: [15, 23, 42],
       lineWidth: 0.6,
@@ -498,22 +551,31 @@ export const exportMadrasaSurveyPdf = async ({
       textColor: [255, 255, 255],
       font: fontName,
       fontStyle: 'bold',
-      fontSize: finalOrientation === 'portrait' ? 10.5 : 11.5,
+      fontSize: finalOrientation === 'portrait' ? 10 : 11.5,
       halign: 'left',
       lineWidth: 0.6,
       lineColor: [6, 78, 59]
     },
     tableLineColor: [140, 150, 165],
     tableLineWidth: 0.6,
-    columnStyles: {
+    columnStyles: finalOrientation === 'portrait' ? {
+      0: { cellWidth: 24, halign: 'center' },
+      1: { cellWidth: 105 },
+      2: { cellWidth: 70 },
+      3: { cellWidth: 65 },
+      4: { cellWidth: 65 },
+      5: { cellWidth: 35, halign: 'center' },
+      6: { cellWidth: 95 },
+      7: { cellWidth: 60, halign: 'center' }
+    } : {
       0: { cellWidth: 26, halign: 'center' },
       5: { cellWidth: 46, halign: 'center' },
-      7: { cellWidth: 60, halign: 'center' }
+      7: { cellWidth: 65, halign: 'center' }
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252]
     },
-    margin: { left: 30, right: 30 },
+    margin: { left: finalOrientation === 'portrait' ? 20 : 30, right: finalOrientation === 'portrait' ? 20 : 30 },
     didDrawPage: () => {
       const str = `Page ${doc.internal.getNumberOfPages()}`;
       doc.setFont(fontName, 'normal');
@@ -523,7 +585,8 @@ export const exportMadrasaSurveyPdf = async ({
     }
   });
 
-  doc.save(fileName);
+  const cleanFileName = (fileName || 'madrasa_family_survey.pdf').replace(/[\/\\]/g, '_');
+  doc.save(cleanFileName);
 };
 
 /**

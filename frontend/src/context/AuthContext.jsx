@@ -60,8 +60,19 @@ export const AuthProvider = ({ children }) => {
     setAdmin(null);
   };
 
+  const updateAdmin = (adminData, newToken) => {
+    if (newToken) {
+      localStorage.setItem('mosque_token', newToken);
+      setToken(newToken);
+    }
+    if (adminData) {
+      localStorage.setItem('mosque_admin', JSON.stringify(adminData));
+      setAdmin(adminData);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ admin, token, isAuthenticated: !!admin, login, logout, loading }}>
+    <AuthContext.Provider value={{ admin, token, isAuthenticated: !!admin, login, logout, updateAdmin, loading }}>
       {children}
     </AuthContext.Provider>
   );

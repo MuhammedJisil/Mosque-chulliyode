@@ -581,20 +581,28 @@ export default function MembersPage() {
   };
 
   // Dedicated Mahallu Family Census & Survey PDF Export
-  const handleExportSurveyPdf = (orientation = 'landscape') => {
-    exportFamilySurveyPdf({
+  const handleExportSurveyPdf = async (orientation = 'landscape') => {
+    const safeDiv = (divisionFilter !== 'All' ? divisionFilter : 'All').replace(/[^a-zA-Z0-9_-]/g, '_');
+    await exportFamilySurveyPdf({
       members: displayedMembers,
       division: divisionFilter !== 'All' ? divisionFilter : 'All Divisions / Areas',
       orientation,
-      fileName: `Mahallu_Family_Survey_${divisionFilter !== 'All' ? divisionFilter.replace(/\s+/g, '_') : 'All'}.pdf`
+      fileName: `Mahallu_Family_Survey_${safeDiv}.pdf`
     });
   };
 
-  const handleExecutePdfDownload = (orientation) => {
-    if (pdfTarget === 'survey') {
-      handleExportSurveyPdf(orientation);
-    } else {
-      handleExportPdf(orientation);
+  const handleExecutePdfDownload = async (orientation) => {
+    try {
+      if (pdfTarget === 'survey') {
+        await handleExportSurveyPdf(orientation);
+        toast.success(`Mahallu Family Survey PDF (${orientation}) downloaded successfully!`);
+      } else {
+        await handleExportPdf(orientation);
+        toast.success(`Mahallu Due Report PDF (${orientation}) downloaded successfully!`);
+      }
+    } catch (err) {
+      console.error('PDF export error:', err);
+      toast.error('Failed to generate PDF: ' + (err.message || 'Error occurred'));
     }
   };
 

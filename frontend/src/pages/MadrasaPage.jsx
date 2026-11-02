@@ -617,20 +617,28 @@ export default function MadrasaPage() {
   };
 
   // Dedicated Madrasa Students & Family Survey PDF Export (with blank Amount column)
-  const handleExportSurveyPdf = (orientation = 'landscape') => {
-    exportMadrasaSurveyPdf({
+  const handleExportSurveyPdf = async (orientation = 'landscape') => {
+    const safeDiv = (selectedDivision !== 'All' ? selectedDivision : 'All').replace(/[^a-zA-Z0-9_-]/g, '_');
+    await exportMadrasaSurveyPdf({
       students: displayedStudents,
-      division: divisionFilter !== 'All' ? divisionFilter : 'All Divisions / Areas',
+      division: selectedDivision !== 'All' ? selectedDivision : 'All Divisions / Areas',
       orientation,
-      fileName: `Madrasa_Family_Survey_${divisionFilter !== 'All' ? divisionFilter.replace(/\s+/g, '_') : 'All'}.pdf`
+      fileName: `Madrasa_Family_Survey_${safeDiv}.pdf`
     });
   };
 
-  const handleExecutePdfDownload = (orientation) => {
-    if (pdfTarget === 'survey') {
-      handleExportSurveyPdf(orientation);
-    } else {
-      handleExportPdf(orientation);
+  const handleExecutePdfDownload = async (orientation) => {
+    try {
+      if (pdfTarget === 'survey') {
+        await handleExportSurveyPdf(orientation);
+        toast.success(`Madrasa Family Survey PDF (${orientation}) downloaded successfully!`);
+      } else {
+        await handleExportPdf(orientation);
+        toast.success(`Madrasa Due Report PDF (${orientation}) downloaded successfully!`);
+      }
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      toast.error('Failed to generate PDF: ' + (err.message || 'Error occurred'));
     }
   };
 

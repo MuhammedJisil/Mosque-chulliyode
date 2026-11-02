@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import {
   X,
@@ -12,21 +13,25 @@ import {
   AlertCircle,
   Lock,
   User,
-  ShieldCheck
+  ShieldCheck,
+  Fingerprint
 } from 'lucide-react';
 
 export default function SecuritySettingsModal({ isOpen, onClose }) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState('password'); // 'password' | 'viewer'
+  const { admin, updateAdmin } = useAuth();
+  const [activeTab, setActiveTab] = useState('adminProfile'); // 'adminProfile' | 'viewer'
 
-  // Admin Password Change state
+  // Admin ID & Password state
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminName, setAdminName] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [updatingAdmin, setUpdatingAdmin] = useState(false);
 
   // Viewer User Management state
   const [viewerLoading, setViewerLoading] = useState(false);
@@ -38,13 +43,15 @@ export default function SecuritySettingsModal({ isOpen, onClose }) {
 
   useEffect(() => {
     if (isOpen) {
+      setAdminUsername(admin?.username || '');
+      setAdminName(admin?.name || '');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setViewerNewPassword('');
       fetchViewerInfo();
     }
-  }, [isOpen]);
+  }, [isOpen, admin]);
 
   const fetchViewerInfo = async () => {
     try {
@@ -80,44 +87,56 @@ export default function SecuritySettingsModal({ isOpen, onClose }) {
 
   const strength = getPasswordStrength(newPassword);
 
-  const handleUpdatePassword = async (e) => {
+  const handleUpdateAdminCredentials = async (e) => {
     e.preventDefault();
 
     if (!currentPassword) {
-      toast.error('Please enter your current administrator password.');
+      toast.error('Current administrator password is required to verify your identity.');
       return;
     }
 
-    if (newPassword.length < 8) {
-      toast.error('New password must be at least 8 characters long for adequate security.');
+    if (!adminUsername || adminUsername.trim().length < 3) {
+      toast.error('Admin ID must be at least 3 characters long.');
       return;
     }
 
-    if (newPassword !== confirmPassword) {
-      toast.error('New passwords do not match. Please re-type accurately.');
-      return;
+    if (newPassword) {
+      if (newPassword.length < 8) {
+        toast.error('New password must be at least 8 characters long for adequate security.');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        toast.error('New passwords do not match. Please re-type accurately.');
+        return;
+      }
     }
 
     try {
-      setUpdatingPassword(true);
-      const res = await api.put('/api/auth/change-password', {
+      setUpdatingAdmin(true);
+      const res = await api.put('/api/auth/admin-credentials', {
         currentPassword,
-        newPassword
+        newUsername: adminUsername.trim(),
+        newName: adminName.trim(),
+        newPassword: newPassword ? newPassword : undefined
       });
 
       if (res.success) {
-        toast.success(res.message || 'Administrator password updated securely!');
+        toast.success(res.message || 'Admin ID & credentials updated successfully!');
+        if (updateAdmin) {
+          updateAdmin(res.admin, res.token);
+        }
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
         onClose();
       } else {
-        toast.error(res.message || 'Failed to update password.');
+        toast.error(res.message || 'Failed to update credentials.');
       }
     } catch (err) {
-      toast.error(err.message || 'Failed to update password.');
+      toast.error(err.message || 'Failed to update credentials.');
     } finally {
-      setUpdatingPassword(false);
+      setUpdatingAdmin(false);
     }
   };
 
@@ -157,7 +176,7 @@ export default function SecuritySettingsModal({ isOpen, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-center justify-center animate-fade-in">
+    <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex min-h-full items-center justify-center animate-fade-in">
       <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full border border-slate-200 dark:border-slate-800 overflow-hidden my-6">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800">
@@ -170,7 +189,7 @@ export default function SecuritySettingsModal({ isOpen, onClose }) {
                 Security &amp; User Credentials
               </h3>
               <p className="text-xs text-slate-400">
-                Main Admin Password &amp; View-Only User Management
+                Change Admin ID, Password &amp; Manage Viewer Account
               </p>
             </div>
           </div>
@@ -186,15 +205,15 @@ export default function SecuritySettingsModal({ isOpen, onClose }) {
         <div className="flex border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-5 pt-3 gap-2">
           <button
             type="button"
-            onClick={() => setActiveTab('password')}
+            onClick={() => setActiveTab('adminProfile')}
             className={`pb-3 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all ${
-              activeTab === 'password'
+              activeTab === 'adminProfile'
                 ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
           >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>Update Admin Password</span>
+            <Fingerprint className="w-3.5 h-3.5" />
+            <span>Admin ID &amp; Password</span>
           </button>
 
           <button
@@ -211,53 +230,62 @@ export default function SecuritySettingsModal({ isOpen, onClose }) {
           </button>
         </div>
 
-        {/* Tab 1: Update Admin Password */}
-        {activeTab === 'password' && (
-          <form onSubmit={handleUpdatePassword} className="p-5 space-y-4">
+        {/* Tab 1: Update Admin ID & Password */}
+        {activeTab === 'adminProfile' && (
+          <form onSubmit={handleUpdateAdminCredentials} className="p-5 space-y-4">
             <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-900/50 flex items-start gap-2.5 text-xs text-slate-700 dark:text-slate-300">
               <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               <div>
                 <strong className="text-emerald-800 dark:text-emerald-300 font-bold block mb-0.5">
                   Anti-Hacker Hardened Protection:
                 </strong>
-                Passwords are encrypted using 12 salt rounds of bcrypt and protected against brute-force attacks with automated attempt limiting.
+                You can change your <strong>Admin ID (Username)</strong>, Display Name, and/or Password. All changes require verification of your current password.
               </div>
             </div>
 
-            {/* Current Password */}
+            {/* Admin ID (Username) */}
             <div>
               <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                Current Admin Password <span className="text-rose-500">*</span>
+                Admin ID (Login Username) <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <input
-                  type={showCurrent ? 'text' : 'password'}
+                  type="text"
                   required
-                  placeholder="Enter your current password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-9"
+                  placeholder="e.g. admin1 or your_username"
+                  value={adminUsername}
+                  onChange={(e) => setAdminUsername(e.target.value.toLowerCase().trim())}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowCurrent(!showCurrent)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
               </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                This is the ID / username you use to log into the ERP. Currently: <strong className="text-emerald-600 font-semibold">{admin?.username || 'admin1'}</strong>
+              </p>
             </div>
 
-            {/* New Password */}
+            {/* Administrator Display Name */}
             <div>
               <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                New Strong Password <span className="text-rose-500">*</span>
+                Administrator Display Name
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Chief Administrator / Secretary"
+                value={adminName}
+                onChange={(e) => setAdminName(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+            </div>
+
+            {/* New Password (Optional) */}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+              <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                New Password <span className="text-slate-400 font-normal lowercase">(leave blank to keep current)</span>
               </label>
               <div className="relative">
                 <input
                   type={showNew ? 'text' : 'password'}
-                  required
-                  placeholder="Minimum 8 characters (letters + numbers)"
+                  placeholder="Leave blank to keep current password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-9"
@@ -289,31 +317,60 @@ export default function SecuritySettingsModal({ isOpen, onClose }) {
               )}
             </div>
 
-            {/* Confirm New Password */}
-            <div>
+            {/* Confirm New Password (if newPassword entered) */}
+            {newPassword && (
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                  Confirm New Password <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showConfirm ? 'text' : 'password'}
+                    required
+                    placeholder="Re-enter new password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-9"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm(!showConfirm)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {confirmPassword && newPassword !== confirmPassword && (
+                  <p className="text-[11px] text-rose-500 mt-1">Passwords do not match yet.</p>
+                )}
+              </div>
+            )}
+
+            {/* Current Password (Required to verify authorization) */}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
               <label className="block text-xs font-semibold uppercase text-slate-700 dark:text-slate-300 mb-1">
-                Confirm New Password <span className="text-rose-500">*</span>
+                Current Password (Identity Verification) <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <input
-                  type={showConfirm ? 'text' : 'password'}
+                  type={showCurrent ? 'text' : 'password'}
                   required
-                  placeholder="Re-enter new password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-9"
+                  placeholder="Enter current password to authorize changes"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-amber-300 dark:border-amber-700/80 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none pr-9"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowConfirm(!showConfirm)}
+                  onClick={() => setShowCurrent(!showCurrent)}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 >
-                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {confirmPassword && newPassword !== confirmPassword && (
-                <p className="text-[11px] text-rose-500 mt-1">Passwords do not match yet.</p>
-              )}
+              <p className="text-[10px] text-slate-400 mt-1">
+                Required for security verification before saving any changes to Admin ID or password.
+              </p>
             </div>
 
             <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
@@ -326,11 +383,11 @@ export default function SecuritySettingsModal({ isOpen, onClose }) {
               </button>
               <button
                 type="submit"
-                disabled={updatingPassword}
-                className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md disabled:opacity-50 transition-all"
+                disabled={updatingAdmin}
+                className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md disabled:opacity-50 transition-all active:scale-95"
               >
                 <Lock className="w-3.5 h-3.5" />
-                {updatingPassword ? 'Updating Password...' : 'Update Password Securely'}
+                {updatingAdmin ? 'Saving Changes...' : 'Save Admin ID & Security Settings'}
               </button>
             </div>
           </form>
