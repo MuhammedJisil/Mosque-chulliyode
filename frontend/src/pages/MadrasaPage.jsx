@@ -311,7 +311,7 @@ export default function MadrasaPage() {
         ...formData,
         status: finalStatus,
         memberId: formData.memberId ? parseInt(formData.memberId) : null,
-        address: formData.address || null,
+        address: formData.address || '',
         endDate: formData.endDate ? formData.endDate : null,
         studentsCount: parseInt(formData.studentsCount) || 1,
         feePerStudent: parseFloat(formData.feePerStudent) || 200,
