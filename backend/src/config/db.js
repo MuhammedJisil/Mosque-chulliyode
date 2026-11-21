@@ -11,17 +11,12 @@ prisma.$connect()
   })
   .catch((err) => console.error('❌ Database connection error on startup:', err.message));
 
-// Keep-alive heartbeat: Prevents Neon PostgreSQL compute from auto-suspending
-// after 5 minutes of inactivity and prevents 57P01 administrator connection terminations
+// Optional Keep-alive heartbeat: Only enabled if DB_KEEP_ALIVE=true in environment variables.
+// NOTE: Neon Free Tier has a limit of ~100 active compute hours/month.
+// Leaving this disabled allows Neon to auto-suspend when idle to preserve your free tier quota.
 function startHeartbeat() {
-  const isPostgres = Boolean(
-    process.env.RENDER ||
-    process.env.NODE_ENV === 'production' ||
-    (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgres'))
-  );
-
-  if (isPostgres) {
-    const HEARTBEAT_INTERVAL_MS = 3.5 * 60 * 1000; // 3.5 minutes (Neon idle timeout is 5 minutes)
+  if (process.env.DB_KEEP_ALIVE === 'true') {
+    const HEARTBEAT_INTERVAL_MS = 3.5 * 60 * 1000;
     const heartbeatTimer = setInterval(async () => {
       try {
         await prisma.$queryRaw`SELECT 1;`;
