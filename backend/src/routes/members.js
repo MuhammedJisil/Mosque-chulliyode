@@ -448,10 +448,26 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
 
     // If multiple months provided
     if (Array.isArray(months) && months.length > 0) {
-      // Validate none of these months are already paid
+      // Validate none of these months are already paid or before joining date
       for (const mItem of months) {
         const mN = parseInt(mItem.month);
         const yN = parseInt(mItem.year);
+
+        // Disallow paying for months before joining
+        if (member.joiningDate) {
+          const jDate = new Date(member.joiningDate);
+          if (!isNaN(jDate.getTime())) {
+            const jY = jDate.getFullYear();
+            const jM = jDate.getMonth() + 1;
+            if (yN < jY || (yN === jY && mN < jM)) {
+              return res.status(400).json({
+                success: false,
+                message: `${member.name} joined on ${jDate.toLocaleDateString('en-GB')}. Cannot record payment for ${monthNames[mN - 1]} ${yN} which is prior to joining date.`
+              });
+            }
+          }
+        }
+
         const existing = await prisma.memberPayment.findFirst({
           where: { memberId, month: mN, year: yN }
         });
@@ -544,6 +560,21 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
     const yNum = parseInt(year) || new Date().getFullYear();
 
     if (mNum > 0 && parseFloat(membershipAmount) > 0) {
+      // Disallow paying for months before joining
+      if (member.joiningDate) {
+        const jDate = new Date(member.joiningDate);
+        if (!isNaN(jDate.getTime())) {
+          const jY = jDate.getFullYear();
+          const jM = jDate.getMonth() + 1;
+          if (yNum < jY || (yNum === jY && mNum < jM)) {
+            return res.status(400).json({
+              success: false,
+              message: `${member.name} joined on ${jDate.toLocaleDateString('en-GB')}. Cannot record payment for ${monthNames[mNum - 1]} ${yNum} which is prior to joining date.`
+            });
+          }
+        }
+      }
+
       const existingPayment = await prisma.memberPayment.findFirst({
         where: {
           memberId,

@@ -563,10 +563,26 @@ router.post('/:id/pay', authMiddleware, async (req, res) => {
 
     // Multi-month payment handling
     if (Array.isArray(months) && months.length > 0) {
-      // Validate none of these months are already paid
+      // Validate none of these months are already paid or before admission date
+      const admDateStr = student.admissionDate || student.createdAt;
       for (const mItem of months) {
         const mN = parseInt(mItem.month);
         const yN = parseInt(mItem.year);
+
+        if (admDateStr) {
+          const aDate = new Date(admDateStr);
+          if (!isNaN(aDate.getTime())) {
+            const aY = aDate.getFullYear();
+            const aM = aDate.getMonth() + 1;
+            if (yN < aY || (yN === aY && mN < aM)) {
+              return res.status(400).json({
+                success: false,
+                message: `${student.studentName || 'Student'} was admitted in ${MONTH_NAMES[aM - 1]} ${aY}. Cannot record payment for ${MONTH_NAMES[mN - 1]} ${yN} which is prior to admission.`
+              });
+            }
+          }
+        }
+
         const existing = await prisma.madrasaPayment.findFirst({
           where: { studentId, month: mN, year: yN }
         });
@@ -654,6 +670,21 @@ router.post('/:id/pay', authMiddleware, async (req, res) => {
     const yNum = parseInt(year) || new Date().getFullYear();
 
     if (mNum > 0 && parseFloat(feeAmount) > 0) {
+      const admDateStr = student.admissionDate || student.createdAt;
+      if (admDateStr) {
+        const aDate = new Date(admDateStr);
+        if (!isNaN(aDate.getTime())) {
+          const aY = aDate.getFullYear();
+          const aM = aDate.getMonth() + 1;
+          if (yNum < aY || (yNum === aY && mNum < aM)) {
+            return res.status(400).json({
+              success: false,
+              message: `${student.studentName || 'Student'} was admitted in ${MONTH_NAMES[aM - 1]} ${aY}. Cannot record payment for ${MONTH_NAMES[mNum - 1]} ${yNum} which is prior to admission.`
+            });
+          }
+        }
+      }
+
       const existing = await prisma.madrasaPayment.findFirst({
         where: { studentId, month: mNum, year: yNum }
       });

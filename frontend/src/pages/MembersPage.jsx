@@ -308,7 +308,7 @@ export default function MembersPage() {
         lastM = selected[selected.length - 1].month;
         lastY = selected[selected.length - 1].year;
       } else {
-        // Find after latest payment or current month
+        // Find after latest payment, joining date, or current month
         const sortedPayments = member.payments && member.payments.length > 0
           ? [...member.payments].filter(p => p.month > 0).sort((a, b) => (b.year - a.year) || (b.month - a.month))
           : [];
@@ -316,11 +316,52 @@ export default function MembersPage() {
           lastM = sortedPayments[0].month;
           lastY = sortedPayments[0].year;
         } else {
-          lastM = currentMonth - 1;
-          lastY = currentYear;
+          // If no payments have been made yet, advance/upcoming payments must start from:
+          // Either the member's joining month (if joining date is in the future)
+          // or currentMonth (if joining date was in the past/present)
+          let startM = currentMonth;
+          let startY = currentYear;
+
+          if (member.joiningDate) {
+            const jDate = new Date(member.joiningDate);
+            if (!isNaN(jDate.getTime())) {
+              const jY = jDate.getFullYear();
+              const jM = jDate.getMonth() + 1;
+              if (jY > startY || (jY === startY && jM > startM)) {
+                startY = jY;
+                startM = jM;
+              }
+            }
+          }
+
+          lastM = startM - 1;
+          lastY = startY;
           if (lastM === 0) {
             lastM = 12;
             lastY -= 1;
+          }
+        }
+
+        // Absolute safeguard: Never allocate a month prior to the member's joining date
+        if (member.joiningDate) {
+          const jDate = new Date(member.joiningDate);
+          if (!isNaN(jDate.getTime())) {
+            const jY = jDate.getFullYear();
+            const jM = jDate.getMonth() + 1;
+            let nextTestM = lastM + 1;
+            let nextTestY = lastY;
+            if (nextTestM > 12) {
+              nextTestM = 1;
+              nextTestY += 1;
+            }
+            if (nextTestY < jY || (nextTestY === jY && nextTestM < jM)) {
+              lastM = jM - 1;
+              lastY = jY;
+              if (lastM === 0) {
+                lastM = 12;
+                lastY -= 1;
+              }
+            }
           }
         }
       }

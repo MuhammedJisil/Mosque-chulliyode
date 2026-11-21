@@ -362,7 +362,7 @@ export default function MadrasaPage() {
         lastM = selected[selected.length - 1].month;
         lastY = selected[selected.length - 1].year;
       } else {
-        // Find after latest payment or current month
+        // Find after latest payment, admission date, or current month
         const sortedPayments = student.payments && student.payments.length > 0
           ? [...student.payments].filter(p => p.month > 0).sort((a, b) => (b.year - a.year) || (b.month - a.month))
           : [];
@@ -370,11 +370,54 @@ export default function MadrasaPage() {
           lastM = sortedPayments[0].month;
           lastY = sortedPayments[0].year;
         } else {
-          lastM = currentMonth - 1;
-          lastY = currentYear;
+          // If no payments have been made yet, advance/upcoming payments must start from:
+          // Either the student's admission month (if admission date is in the future)
+          // or currentMonth (if admission date was in the past/present)
+          let startM = currentMonth;
+          let startY = currentYear;
+
+          const admissionDateStr = student.admissionDate || student.createdAt;
+          if (admissionDateStr) {
+            const aDate = new Date(admissionDateStr);
+            if (!isNaN(aDate.getTime())) {
+              const aY = aDate.getFullYear();
+              const aM = aDate.getMonth() + 1;
+              if (aY > startY || (aY === startY && aM > startM)) {
+                startY = aY;
+                startM = aM;
+              }
+            }
+          }
+
+          lastM = startM - 1;
+          lastY = startY;
           if (lastM === 0) {
             lastM = 12;
             lastY -= 1;
+          }
+        }
+
+        // Absolute safeguard: Never allocate a month prior to the student's admission date
+        const admissionDateStr = student.admissionDate || student.createdAt;
+        if (admissionDateStr) {
+          const aDate = new Date(admissionDateStr);
+          if (!isNaN(aDate.getTime())) {
+            const aY = aDate.getFullYear();
+            const aM = aDate.getMonth() + 1;
+            let nextTestM = lastM + 1;
+            let nextTestY = lastY;
+            if (nextTestM > 12) {
+              nextTestM = 1;
+              nextTestY += 1;
+            }
+            if (nextTestY < aY || (nextTestY === aY && nextTestM < aM)) {
+              lastM = aM - 1;
+              lastY = aY;
+              if (lastM === 0) {
+                lastM = 12;
+                lastY -= 1;
+              }
+            }
           }
         }
       }
